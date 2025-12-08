@@ -1,0 +1,40 @@
+/* Fix sidebar height to prevent extending beyond viewport */
+.sidebar-wrapper {
+  max-height: 100vh !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  
+  > div {
+    max-height: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  .sidebar-main {
+    flex: 1 !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+  
+  .sidebar-links {
+    flex: 1 !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+  
+  .simplebar-wrapper {
+    max-height: calc(100vh - 200px) !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+  }
+}
+
