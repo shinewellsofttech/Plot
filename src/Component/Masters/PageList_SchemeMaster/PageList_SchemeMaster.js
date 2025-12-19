@@ -7,6 +7,7 @@ import Breadcrumbs from "../../../CommonElements/Breadcrumbs/Breadcrumbs";
 import CardHeaderCommon from "../../../CommonElements/CardHeaderCommon/CardHeaderCommon";
 import { Fn_FillListData, Fn_DeleteData } from "../../../store/Functions";
 import { API_WEB_URLS } from "../../../constants/constAPI";
+import { toast } from "react-toastify";
 
 const API_URL = API_WEB_URLS.MASTER + "/0/token/SchemeMaster/TBL.F_CompanyMaster/";
 
@@ -37,24 +38,23 @@ const PageList_SchemeMasterContainer = () => {
     navigate("/addEdit_SchemeMaster", { state: { Id: id } });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async(id) => {
     console.log("handleDelete called with id:", id);
     if (!id || id === 0) {
-      alert("Invalid ID for deletion");
+      toast.error("Invalid ID for deletion");
       return;
     }
     if (window.confirm("Are you sure you want to delete this scheme?")) {
-      const deleteUrl = API_WEB_URLS.MASTER + "/0/token/SchemeMaster/Id";
+      const deleteUrl = API_WEB_URLS.MASTER + "/0/token/DeleteSchemeMaster/Id/" + id;
       console.log("Calling Fn_DeleteData with:", { id, deleteUrl });
-      Fn_DeleteData(dispatch, setState, id, deleteUrl, API_URL)
-        .then(() => {
-          console.log("Delete successful, reloading data");
-          loadData();
-        })
-        .catch((error) => {
-          console.error("Delete error:", error);
-          alert("Failed to delete. Please check console for details.");
-        });
+      const res= await  Fn_FillListData(dispatch, setState, "New", deleteUrl);
+      console.log("res", res);
+      if(res && res.length > 0 && res[0].Id > 0){
+        toast.success("Scheme deleted successfully");
+        loadData();
+      }else{
+        toast.error("Failed to delete scheme");
+      }
     }
   };
 

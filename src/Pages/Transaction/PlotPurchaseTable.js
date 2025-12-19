@@ -58,13 +58,13 @@ const PlotPurchaseTable = ({ plotData, plotOptions, onRemove, onAdd, onDataChang
         <Table bordered hover>
           <thead>
             <tr>
-              <th>Plot Name</th>
-              <th>Plot Size</th>
-              <th>Tentative Price</th>
-              <th>Qty</th>
-              <th>Actual Price</th>
-              <th>Total Amount</th>
-              <th style={{ width: "100px", textAlign: "center" }}>Action</th>
+              <th style={{ width: "25%", minWidth: "250px" }}>Plot Name</th>
+              <th style={{ width: "12%" }}>Plot Size</th>
+              <th style={{ width: "13%" }}>Tentative Price</th>
+              <th style={{ width: "10%" }}>Qty</th>
+              <th style={{ width: "13%" }}>Actual Price</th>
+              <th style={{ width: "13%" }}>Total Amount</th>
+              <th style={{ width: "14%", textAlign: "center" }}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -103,7 +103,7 @@ const PlotPurchaseTable = ({ plotData, plotOptions, onRemove, onAdd, onDataChang
 
               return (
               <tr key={index}>
-                <td>
+                <td style={{ width: "25%", minWidth: "250px" }}>
                   <select
                     ref={plotDropdownRef}
                     className="form-select"

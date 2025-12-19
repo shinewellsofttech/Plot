@@ -9,6 +9,7 @@ import Breadcrumbs from "../../CommonElements/Breadcrumbs/Breadcrumbs";
 import CardHeaderCommon from "../../CommonElements/CardHeaderCommon/CardHeaderCommon";
 import { Fn_FillListData, Fn_AddEditData, showToastWithCloseButton } from "../../store/Functions";
 import { API_WEB_URLS } from "../../constants/constAPI";
+import { toast } from "react-toastify";
 
 const API_URL_RECEIPTH = API_WEB_URLS.MASTER + "/0/token/ReceiptH";
 const API_URL_RECEIPTNO = API_WEB_URLS.MASTER + "/0/token/NextReceiptNo";
@@ -38,8 +39,11 @@ const ReceiptEntryForm = () => {
       ReceiptNo: "",
       ReceiptDate: new Date().toISOString().split('T')[0],
       TotalPaidAmount: 0,
-
+      Penalty: 0,
       Remark: "",
+      PaymentRefNo: "",
+      PaymentBankName: "",
+      PaymentDate: "",
     },
   });
 
@@ -81,6 +85,9 @@ const ReceiptEntryForm = () => {
         ReceiptDate: new Date().toISOString().split('T')[0],
         TotalPaidAmount: 0,
         Remark: "",
+        PaymentRefNo: "",
+        PaymentBankName: "",
+        PaymentDate: "",
       },
       VoucherArray: [],
       EMIArray: [],
@@ -96,7 +103,11 @@ const ReceiptEntryForm = () => {
     setFieldValue("ReceiptNo", "");
     setFieldValue("ReceiptDate", new Date().toISOString().split('T')[0]);
     setFieldValue("TotalPaidAmount", 0);
+    setFieldValue("Penalty", 0);
     setFieldValue("Remark", "");
+    setFieldValue("PaymentRefNo", "");
+    setFieldValue("PaymentBankName", "");
+    setFieldValue("PaymentDate", "");
 
     // Call fetchData to reload data
     await fetchData();
@@ -154,17 +165,94 @@ const ReceiptEntryForm = () => {
     }
   };
 
+  const generateRemark = (paymentMode, amount, paymentRefNo = "", paymentBankName = "", paymentDate = "") => {
+    if (!paymentMode || !amount || parseFloat(amount) <= 0) {
+      return "";
+    }
+    
+    // Get payment mode name
+    const mode = paymentModeOptions.find(m => m.Id === parseInt(paymentMode));
+    const paymentModeName = mode ? mode.Name : "N/A";
+    
+    const formattedAmount = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2
+    }).format(parseFloat(amount));
+    
+    let remark = `Payment received via ${paymentModeName} for ${formattedAmount}`;
+    
+    // Add payment details if available
+    if (shouldShowPaymentFields(paymentMode)) {
+      const labels = getPaymentFieldLabels(paymentMode);
+      const details = [];
+      
+      if (paymentRefNo && paymentRefNo.trim()) {
+        details.push(`${labels.refLabel}: ${paymentRefNo.trim()}`);
+      }
+      if (paymentBankName && paymentBankName.trim()) {
+        details.push(`${labels.bankLabel}: ${paymentBankName.trim()}`);
+      }
+      if (paymentDate && paymentDate.trim()) {
+        const formattedDate = new Date(paymentDate).toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        });
+        details.push(`${labels.dateLabel}: ${formattedDate}`);
+      }
+      
+      if (details.length > 0) {
+        remark += ` (${details.join(', ')})`;
+      }
+    }
+    
+    return remark;
+  };
+
   const handleCommonChange = (name, value, handleChange, setFieldValue) => {
     // Update Formik value
     handleChange({ target: { name, value } });
     
     // Update formData in state
+    const updatedFormData = {
+      ...state.formData,
+      [name]: value,
+    };
+    
+    // If PaymentMode changes, clear payment fields if switching to Cash
+    if (name === "PaymentMode") {
+      const modeId = parseInt(value);
+      if (modeId === 1) {
+        // Cash mode - clear payment fields
+        updatedFormData.PaymentRefNo = "";
+        updatedFormData.PaymentBankName = "";
+        updatedFormData.PaymentDate = "";
+        setFieldValue("PaymentRefNo", "");
+        setFieldValue("PaymentBankName", "");
+        setFieldValue("PaymentDate", "");
+      }
+    }
+    
+    // Auto-generate remark if PaymentMode, TotalPaidAmount, Penalty, or payment fields change
+    if (name === "PaymentMode" || name === "TotalPaidAmount" || name === "Penalty" || name === "PaymentRefNo" || name === "PaymentBankName" || name === "PaymentDate") {
+      const paymentMode = name === "PaymentMode" ? value : updatedFormData.PaymentMode;
+      const totalAmount = name === "TotalPaidAmount" ? value : updatedFormData.TotalPaidAmount;
+      const paymentRefNo = name === "PaymentRefNo" ? value : updatedFormData.PaymentRefNo;
+      const paymentBankName = name === "PaymentBankName" ? value : updatedFormData.PaymentBankName;
+      const paymentDate = name === "PaymentDate" ? value : updatedFormData.PaymentDate;
+      const autoRemark = generateRemark(paymentMode, totalAmount, paymentRefNo, paymentBankName, paymentDate);
+      
+      if (autoRemark) {
+        updatedFormData.Remark = autoRemark;
+        setFieldValue("Remark", autoRemark);
+
+      }
+    }
+    
     setState((prev) => ({
       ...prev,
-      formData: {
-        ...prev.formData,
-        [name]: value,
-      },
+      formData: updatedFormData,
     }));
   };
 
@@ -175,6 +263,38 @@ const ReceiptEntryForm = () => {
     { Id: 4, Name: "UPI" },
     { Id: 5, Name: "Card" },
   ];
+
+  const getPaymentFieldLabels = (paymentMode) => {
+    const modeId = parseInt(paymentMode);
+    switch (modeId) {
+      case 2: // Cheque
+        return {
+          refLabel: "Cheque No",
+          bankLabel: "Bank Name",
+          dateLabel: "Cheque Date"
+        };
+      case 3: // Online Transfer
+      case 4: // UPI
+      case 5: // Card
+        return {
+          refLabel: "Ref No",
+          bankLabel: "Bank Name",
+          dateLabel: "Transaction Date"
+        };
+      default:
+        return {
+          refLabel: "Ref No",
+          bankLabel: "Bank Name",
+          dateLabel: "Transaction Date"
+        };
+    }
+  };
+
+  const shouldShowPaymentFields = (paymentMode) => {
+    const modeId = parseInt(paymentMode);
+    // Show fields for Cheque, Online Transfer, UPI, and Card
+    return modeId === 2 || modeId === 3 || modeId === 4 || modeId === 5;
+  };
 
   const validationSchema = Yup.object({
     F_SchemeMaster: Yup.string().required("Scheme is required"),
@@ -187,6 +307,8 @@ const ReceiptEntryForm = () => {
     TotalPaidAmount: Yup.number()
       .required("Total Paid Amount is required")
       .positive("Amount must be positive"),
+    Penalty: Yup.number()
+      .min(0, "Penalty must be 0 or positive"),
     Remark: Yup.string(),
   });
 
@@ -195,6 +317,15 @@ const ReceiptEntryForm = () => {
     const selectedIds = selectedOptions.map(option => option.value);
 
     if (!selectedIds || selectedIds.length === 0) {
+      // Auto-generate remark with 0 amount (will return empty string)
+      const autoRemark = generateRemark(
+        state.formData.PaymentMode, 
+        0, 
+        state.formData.PaymentRefNo || "", 
+        state.formData.PaymentBankName || "", 
+        state.formData.PaymentDate || ""
+      );
+      
       setState((prev) => ({
         ...prev,
         selectedEMIs: [],
@@ -203,9 +334,11 @@ const ReceiptEntryForm = () => {
         formData: {
           ...prev.formData,
           TotalPaidAmount: 0,
+          Remark: autoRemark || "",
         },
       }));
       setFieldValue("TotalPaidAmount", 0);
+      setFieldValue("Remark", autoRemark || "");
       return;
     }
 
@@ -228,7 +361,18 @@ const ReceiptEntryForm = () => {
 
     const receiptLData = generateReceiptLData(selectedEMIs);
     // Sum of PaidAmount from selected EMIs
-    const totalAmount = selectedEMIs.reduce((sum, item) => sum + parseFloat(item.PaidAmount || 0), 0);
+    const emiTotal = selectedEMIs.reduce((sum, item) => sum + parseFloat(item.PaidAmount || 0), 0);
+    const penalty = parseFloat(state.formData.Penalty) || 0;
+    const totalAmount = emiTotal + penalty;
+
+    // Auto-generate remark based on payment mode, total amount, and payment fields
+    const autoRemark = generateRemark(
+      state.formData.PaymentMode, 
+      totalAmount, 
+      state.formData.PaymentRefNo || "", 
+      state.formData.PaymentBankName || "", 
+      state.formData.PaymentDate || ""
+    );
 
     setState((prev) => ({
       ...prev,
@@ -238,10 +382,14 @@ const ReceiptEntryForm = () => {
       formData: {
         ...prev.formData,
         TotalPaidAmount: totalAmount,
+        Remark: autoRemark || prev.formData.Remark,
       },
     }));
 
     setFieldValue("TotalPaidAmount", totalAmount);
+    if (autoRemark) {
+      setFieldValue("Remark", autoRemark);
+    }
   };
 
   const generateReceiptLData = (emis) => {
@@ -260,7 +408,11 @@ const ReceiptEntryForm = () => {
     formData.append("ReceiptNo", state.formData.ReceiptNo);
     formData.append("ReceiptDate", state.formData.ReceiptDate);
     formData.append("TotalPaidAmount", state.formData.TotalPaidAmount);
+    formData.append("Penalty", state.formData.Penalty || 0);
     formData.append("Remark", state.formData.Remark);
+    formData.append("PaymentRefNo", state.formData.PaymentRefNo || "");
+    formData.append("PaymentBankName", state.formData.PaymentBankName || "");
+    formData.append("PaymentDate", state.formData.PaymentDate || "");
     formData.append("ReceiptLData", state.ReceiptLData);
     formData.append("UserId", obj.Id || obj.id || "");
     
@@ -325,6 +477,53 @@ const ReceiptEntryForm = () => {
     }
     
     window.print();
+  };
+
+  const handleDelete = async() => {
+    console.log("handleDelete called with id:", state.selectedReceiptId);
+    if (!state.selectedReceiptId || state.selectedReceiptId === 0) {
+      toast.error("Please select a receipt record to delete");
+      return;
+    }
+    if (window.confirm("Are you sure you want to delete this receipt?")) {
+      const deleteUrl = API_WEB_URLS.MASTER + "/0/token/DeleteReceipt/Id/" + state.selectedReceiptId;
+      console.log("Calling delete with:", { id: state.selectedReceiptId, deleteUrl });
+      const res = await Fn_FillListData(dispatch, setState, "New", deleteUrl);
+      console.log("res", res);
+      if(res && res.length > 0 && res[0].Id > 0){
+        toast.success("Receipt deleted successfully");
+        // Reload receipt list
+        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        await Fn_FillListData(dispatch, setState, "ReceiptHArray", API_URL_RECEIPTH + "/Id/" + obj.CompanyId);
+        
+        // Reset form after successful deletion
+        setState((prev) => ({
+          ...prev,
+          isEditMode: false,
+          selectedReceiptId: null,
+          formData: {
+            F_SchemeMaster: "",
+            F_VoucherH: "",
+            PaymentMode: "",
+            ReceiptNo: "",
+            ReceiptDate: new Date().toISOString().split('T')[0],
+            TotalPaidAmount: 0,
+            Penalty: 0,
+            Remark: "",
+            PaymentRefNo: "",
+            PaymentBankName: "",
+            PaymentDate: "",
+          },
+          VoucherArray: [],
+          EMIArray: [],
+          selectedEMIs: [],
+          selectedEMIIds: [],
+          ReceiptLData: "",
+        }));
+      }else{
+        toast.error("Failed to delete receipt");
+      }
+    }
   };
 
   const getPaymentModeName = (modeId) => {
@@ -427,7 +626,11 @@ const ReceiptEntryForm = () => {
       ReceiptNo: selectedReceipt.ReceiptNo || "",
       ReceiptDate: receiptDate,
       TotalPaidAmount: selectedReceipt.TotalPaidAmount || 0,
+      Penalty: selectedReceipt.Penalty || 0,
       Remark: selectedReceipt.Remark || "",
+      PaymentRefNo: selectedReceipt.PaymentRefNo || "",
+      PaymentBankName: selectedReceipt.PaymentBankName || "",
+      PaymentDate: selectedReceipt.PaymentDate ? new Date(selectedReceipt.PaymentDate).toISOString().split('T')[0] : "",
     };
 
     // Update state with receipt data - this will trigger Formik reinitialize
@@ -451,7 +654,11 @@ const ReceiptEntryForm = () => {
     setFieldValue("ReceiptNo", newFormData.ReceiptNo);
     setFieldValue("ReceiptDate", newFormData.ReceiptDate);
     setFieldValue("TotalPaidAmount", newFormData.TotalPaidAmount);
+    setFieldValue("Penalty", newFormData.Penalty);
     setFieldValue("Remark", newFormData.Remark);
+    setFieldValue("PaymentRefNo", newFormData.PaymentRefNo);
+    setFieldValue("PaymentBankName", newFormData.PaymentBankName);
+    setFieldValue("PaymentDate", newFormData.PaymentDate);
 
     // Fetch vouchers for the scheme
     if (selectedReceipt.F_SchemeMaster) {
@@ -487,7 +694,11 @@ const ReceiptEntryForm = () => {
           ReceiptNo: "",
           ReceiptDate: new Date().toISOString().split('T')[0],
           TotalPaidAmount: 0,
+          Penalty: 0,
           Remark: "",
+          PaymentRefNo: "",
+          PaymentBankName: "",
+          PaymentDate: "",
         },
         VoucherArray: [],
         EMIArray: [],
@@ -501,7 +712,11 @@ const ReceiptEntryForm = () => {
       setFieldValue("ReceiptNo", "");
       setFieldValue("ReceiptDate", new Date().toISOString().split('T')[0]);
       setFieldValue("TotalPaidAmount", 0);
+      setFieldValue("Penalty", 0);
       setFieldValue("Remark", "");
+      setFieldValue("PaymentRefNo", "");
+      setFieldValue("PaymentBankName", "");
+      setFieldValue("PaymentDate", "");
       return;
     }
 
@@ -529,7 +744,11 @@ const ReceiptEntryForm = () => {
     ReceiptNo: state.formData.ReceiptNo || "",
     ReceiptDate: state.formData.ReceiptDate || new Date().toISOString().split('T')[0],
     TotalPaidAmount: state.formData.TotalPaidAmount || 0,
+    Penalty: state.formData.Penalty || 0,
     Remark: state.formData.Remark || "",
+    PaymentRefNo: state.formData.PaymentRefNo || "",
+    PaymentBankName: state.formData.PaymentBankName || "",
+    PaymentDate: state.formData.PaymentDate || "",
   }), [state.formData]);
 
   const handleKeyDown = (e) => {
@@ -1017,6 +1236,60 @@ const ReceiptEntryForm = () => {
                             <ErrorMessage name="PaymentMode" component="div" className="text-danger small" />
                           </FormGroup>
                         </Col>
+                        {shouldShowPaymentFields(values.PaymentMode) && (() => {
+                          const labels = getPaymentFieldLabels(values.PaymentMode);
+                          return (
+                            <>
+                              <Col md="4">
+                                <FormGroup>
+                                  <Label>
+                                    {labels.refLabel}
+                                  </Label>
+                                  <Input
+                                    type="text"
+                                    name="PaymentRefNo"
+                                    placeholder={`Enter ${labels.refLabel}`}
+                                    value={values.PaymentRefNo}
+                                    onChange={(e) => handleCommonChange("PaymentRefNo", e.target.value, handleChange, setFieldValue)}
+                                    onBlur={handleBlur}
+                                    onKeyDown={handleKeyDown}
+                                  />
+                                </FormGroup>
+                              </Col>
+                              <Col md="4">
+                                <FormGroup>
+                                  <Label>
+                                    {labels.bankLabel}
+                                  </Label>
+                                  <Input
+                                    type="text"
+                                    name="PaymentBankName"
+                                    placeholder={`Enter ${labels.bankLabel}`}
+                                    value={values.PaymentBankName}
+                                    onChange={(e) => handleCommonChange("PaymentBankName", e.target.value, handleChange, setFieldValue)}
+                                    onBlur={handleBlur}
+                                    onKeyDown={handleKeyDown}
+                                  />
+                                </FormGroup>
+                              </Col>
+                              <Col md="4">
+                                <FormGroup>
+                                  <Label>
+                                    {labels.dateLabel}
+                                  </Label>
+                                  <Input
+                                    type="date"
+                                    name="PaymentDate"
+                                    value={values.PaymentDate}
+                                    onChange={(e) => handleCommonChange("PaymentDate", e.target.value, handleChange, setFieldValue)}
+                                    onBlur={handleBlur}
+                                    onKeyDown={handleKeyDown}
+                                  />
+                                </FormGroup>
+                              </Col>
+                            </>
+                          );
+                        })()}
                         <Col md="6">
                           <FormGroup>
                             <Label>
@@ -1053,7 +1326,40 @@ const ReceiptEntryForm = () => {
                             <ErrorMessage name="ReceiptDate" component="div" className="text-danger small" />
                           </FormGroup>
                         </Col>
-                        <Col md="6">
+                        <Col md="4">
+                          <FormGroup>
+                            <Label>
+                              Penalty
+                            </Label>
+                            <Input
+                              type="number"
+                              name="Penalty"
+                              placeholder="Enter penalty amount"
+                              value={values.Penalty}
+                              onChange={(e) => {
+                                const penaltyValue = parseFloat(e.target.value) || 0;
+                                handleCommonChange("Penalty", penaltyValue, handleChange, setFieldValue);
+                                
+                                // Recalculate TotalPaidAmount when Penalty changes
+                                const emiTotal = state.selectedEMIs.reduce((sum, item) => sum + parseFloat(item.PaidAmount || 0), 0);
+                                const newTotal = emiTotal + penaltyValue;
+                                setState((prev) => ({
+                                  ...prev,
+                                  formData: {
+                                    ...prev.formData,
+                                    Penalty: penaltyValue,
+                                    TotalPaidAmount: newTotal,
+                                  },
+                                }));
+                                setFieldValue("TotalPaidAmount", newTotal);
+                              }}
+                              onBlur={handleBlur}
+                              invalid={touched.Penalty && !!errors.Penalty}
+                            />
+                            <ErrorMessage name="Penalty" component="div" className="text-danger small" />
+                          </FormGroup>
+                        </Col>
+                        <Col md="4">
                           <FormGroup>
                             <Label>
                               Total Paid Amount <span className="text-danger">*</span>
@@ -1071,7 +1377,7 @@ const ReceiptEntryForm = () => {
                             <ErrorMessage name="TotalPaidAmount" component="div" className="text-danger small" />
                           </FormGroup>
                         </Col>
-                        <Col md="6">
+                        <Col md="4">
                           <FormGroup>
                             <Label>Remark</Label>
                             <Input
@@ -1108,14 +1414,24 @@ const ReceiptEntryForm = () => {
                         </Btn>
                       )}
                       {state.isEditMode && state.selectedReceiptId && (
-                        <Btn
-                          color="info"
-                          type="button"
-                          className="me-2"
-                          onClick={handlePrint}
-                        >
-                          <i className="fa fa-print me-1"></i>Print Receipt
-                        </Btn>
+                        <>
+                          <Btn
+                            color="info"
+                            type="button"
+                            className="me-2"
+                            onClick={handlePrint}
+                          >
+                            <i className="fa fa-print me-1"></i>Print Receipt
+                          </Btn>
+                          <Btn
+                            color="danger"
+                            type="button"
+                            className="me-2"
+                            onClick={handleDelete}
+                          >
+                            <i className="fa fa-trash me-1"></i>Delete
+                          </Btn>
+                        </>
                       )}
                       <Btn color="primary" type="submit">
                         {state.isEditMode ? "Update Receipt" : "Submit Receipt"}

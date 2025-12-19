@@ -7,14 +7,14 @@ import CardHeaderCommon from "../../CommonElements/CardHeaderCommon/CardHeaderCo
 import { Fn_GetReport, Fn_FillListData } from '../../store/Functions';
 import { API_WEB_URLS } from '../../constants/constAPI';
 
-function LedgerReport() {
+function DayBook() {
     const dispatch = useDispatch();
     const [gridData, setGridData] = useState([]);
     
     // API URLs for dropdowns
     const API_URL_SCHEME = API_WEB_URLS.MASTER + "/0/token/SchemeMaster";
     const API_URL_PARTY = API_WEB_URLS.MASTER + "/0/token/LedgerMaster";
-    const API_URL_REPORT = 'LedgerRegister/0/token';
+    const API_URL_REPORT = 'DayBook/0/token';
 
     const [state, setState] = useState({
         schemeOptions: [],
@@ -170,13 +170,12 @@ function LedgerReport() {
     // Calculate totals
     const calculateTotals = () => {
         if (!gridData || gridData.length === 0) {
-            return { totalDebit: 0, totalCredit: 0 };
+            return { totalReceivedAmount: 0 };
         }
         const totals = gridData.reduce((acc, row) => {
-            acc.totalDebit += parseFloat(row.Debit || 0);
-            acc.totalCredit += parseFloat(row.Credit || 0);
+            acc.totalReceivedAmount += parseFloat(row.ReceivedAmount || 0);
             return acc;
-        }, { totalDebit: 0, totalCredit: 0 });
+        }, { totalReceivedAmount: 0 });
         return totals;
     };
 
@@ -184,12 +183,12 @@ function LedgerReport() {
 
     return (
         <div className="page-body">
-            <Breadcrumbs mainTitle="Ledger Report" parent="Reports" />
+            <Breadcrumbs mainTitle="Day Book" parent="Reports" />
             <Container fluid>
                 <Row>
                     <Col xs="12">
                         <Card>
-                            <CardHeaderCommon title="Ledger Report Filters" tagClass="card-title mb-0" />
+                            <CardHeaderCommon title="Day Book Filters" tagClass="card-title mb-0" />
                             <CardBody>
                                 {/* Filter Form */}
                                 <Row className="mb-3">
@@ -263,92 +262,49 @@ function LedgerReport() {
                                     <Row className="mt-4">
                                         <Col xs="12">
                                             <Card>
-                                                <CardHeaderCommon title="Ledger Report Details" tagClass="card-title mb-0" />
+                                                <CardHeaderCommon title="Day Book Details" tagClass="card-title mb-0" />
                                                 <CardBody>
                                                     <div className="table-responsive">
                                                         <Table striped hover bordered className="table-hover">
                                                             <thead className="table-dark">
                                                                 <tr>
                                                                     <th>#</th>
-                                                                    <th>Scheme Name</th>
+                                                                    <th>Receipt No</th>
+                                                                    <th>Receipt Date</th>
                                                                     <th>Ledger Name</th>
-                                                                    <th>Date</th>
-                                                                    <th>Entry Type</th>
-                                                                    <th>Ref No</th>
-                                                                    <th>Remarks</th>
-                                                                    <th className="text-end">Debit (₹)</th>
-                                                                    <th className="text-end">Credit (₹)</th>
-                                                                    <th className="text-end">Running Balance (₹)</th>
+                                                                    <th>Plot Names</th>
+                                                                    <th className="text-end">Received Amount (₹)</th>
+                                                                    <th>EMI Numbers</th>
+                                                                    <th>Remark</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
                                                                 {gridData.map((row, rowIndex) => {
-                                                                    const debit = parseFloat(row.Debit || 0);
-                                                                    const credit = parseFloat(row.Credit || 0);
-                                                                    const balance = parseFloat(row.RunningBalance || 0);
-                                                                    
-                                                                    // Check if previous row has same SchemeName and LedgerName
-                                                                    const prevRow = rowIndex > 0 ? gridData[rowIndex - 1] : null;
-                                                                    const showSchemeName = !prevRow || 
-                                                                        prevRow.SchemeName !== row.SchemeName || 
-                                                                        prevRow.LedgerName !== row.LedgerName;
-                                                                    const showLedgerName = showSchemeName; // Same logic for both
+                                                                    const receivedAmount = parseFloat(row.ReceivedAmount || 0);
                                                                     
                                                                     return (
                                                                         <tr key={rowIndex}>
                                                                             <td>{rowIndex + 1}</td>
-                                                                            <td>{showSchemeName ? (row.SchemeName || '-') : ''}</td>
-                                                                            <td>{showLedgerName ? (row.LedgerName || '-') : ''}</td>
-                                                                            <td>{formatDate(row.EntryDate)}</td>
-                                                                            <td>
-                                                                                <span className={`badge ${
-                                                                                    row.EntryType === 'RECEIPT' ? 'bg-success' :
-                                                                                    row.EntryType === 'VOUCHER' ? 'bg-primary' :
-                                                                                    row.EntryType === 'DOWN PAYMENT' ? 'bg-info' :
-                                                                                    'bg-secondary'
-                                                                                }`}>
-                                                                                    {row.EntryType || '-'}
-                                                                                </span>
+                                                                            <td>{row.ReceiptNo || '-'}</td>
+                                                                            <td>{formatDate(row.ReceiptDate)}</td>
+                                                                            <td>{row.LedgerName || '-'}</td>
+                                                                            <td>{row.PlotNames || '-'}</td>
+                                                                            <td className="text-end">
+                                                                                <strong className="text-success">{formatCurrency(receivedAmount)}</strong>
                                                                             </td>
-                                                                            <td>{row.RefNo || '-'}</td>
+                                                                            <td>{row.EMI_Numbers || '-'}</td>
                                                                             <td>{row.Remark || '-'}</td>
-                                                                            <td className="text-end">
-                                                                                {debit > 0 ? (
-                                                                                    <strong className="text-danger">{formatCurrency(debit)}</strong>
-                                                                                ) : (
-                                                                                    <span className="text-muted">-</span>
-                                                                                )}
-                                                                            </td>
-                                                                            <td className="text-end">
-                                                                                {credit > 0 ? (
-                                                                                    <strong className="text-success">{formatCurrency(credit)}</strong>
-                                                                                ) : (
-                                                                                    <span className="text-muted">-</span>
-                                                                                )}
-                                                                            </td>
-                                                                            <td className="text-end">
-                                                                                <strong className={balance >= 0 ? 'text-primary' : 'text-danger'}>
-                                                                                    {formatCurrency(balance)}
-                                                                                </strong>
-                                                                            </td>
                                                                         </tr>
                                                                     );
                                                                 })}
                                                             </tbody>
                                                             <tfoot className="table-secondary">
                                                                 <tr>
-                                                                    <td colSpan="7" className="text-end"><strong>Total:</strong></td>
+                                                                    <td colSpan="5" className="text-end"><strong>Total:</strong></td>
                                                                     <td className="text-end">
-                                                                        <strong className="text-danger">{formatCurrency(totals.totalDebit)}</strong>
+                                                                        <strong className="text-success">{formatCurrency(totals.totalReceivedAmount)}</strong>
                                                                     </td>
-                                                                    <td className="text-end">
-                                                                        <strong className="text-success">{formatCurrency(totals.totalCredit)}</strong>
-                                                                    </td>
-                                                                    <td className="text-end">
-                                                                        <strong>
-                                                                            {gridData.length > 0 ? formatCurrency(gridData[gridData.length - 1].RunningBalance) : '0.00'}
-                                                                        </strong>
-                                                                    </td>
+                                                                    <td colSpan="2"></td>
                                                                 </tr>
                                                             </tfoot>
                                                         </Table>
@@ -377,4 +333,4 @@ function LedgerReport() {
     )
 }
 
-export default LedgerReport
+export default DayBook

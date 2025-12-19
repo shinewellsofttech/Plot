@@ -24,6 +24,7 @@ function EmiReport() {
         partyOptions: [],
         isProgress: false,
         trendPeriod: 'monthly', // 'monthly', 'yearly', '5years', 'max'
+        barChartPage: 0, // For pagination - 6 months at a time
         formData: {
             F_SchemeMaster: "",
             F_VoucherH: "",
@@ -49,6 +50,45 @@ function EmiReport() {
             API_URL_SCHEME + "/TBL.F_CompanyMaster/" + obj.CompanyId
         );
     }, [dispatch]);
+
+    // Handle Ctrl + Scroll for bar chart pagination
+    useEffect(() => {
+        const handleWheel = (e) => {
+            if (e.ctrlKey && gridData && gridData.length > 0) {
+                e.preventDefault();
+                const sortedMonths = Object.keys(
+                    gridData.reduce((acc, item) => {
+                        const dueDate = item.DueDate || item.VoucherDate;
+                        if (!dueDate) return acc;
+                        try {
+                            const date = new Date(dueDate);
+                            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                            acc[monthKey] = true;
+                        } catch (e) {}
+                        return acc;
+                    }, {})
+                ).sort();
+                
+                const totalPages = Math.ceil(sortedMonths.length / 6);
+                const currentPage = state.barChartPage;
+                
+                if (e.deltaY > 0) {
+                    // Scroll down - next page
+                    if (currentPage < totalPages - 1) {
+                        setState(prev => ({ ...prev, barChartPage: currentPage + 1 }));
+                    }
+                } else {
+                    // Scroll up - previous page
+                    if (currentPage > 0) {
+                        setState(prev => ({ ...prev, barChartPage: currentPage - 1 }));
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('wheel', handleWheel, { passive: false });
+        return () => window.removeEventListener('wheel', handleWheel);
+    }, [gridData, state.barChartPage]);
 
     // Handle Scheme change - load vouchers and parties
     const handleSchemeChange = async (schemeId) => {
@@ -157,7 +197,7 @@ function EmiReport() {
             true
         );
 
-        setState((prev) => ({ ...prev, isProgress: false }));
+        setState((prev) => ({ ...prev, isProgress: false, barChartPage: 0 }));
     };
 
     // Reset filters
@@ -175,6 +215,7 @@ function EmiReport() {
             },
             voucherOptions: [],
             partyOptions: [],
+            barChartPage: 0,
         }));
         setGridData([]);
     };
@@ -362,14 +403,20 @@ function EmiReport() {
         // Sort by month key (chronologically)
         const sortedMonths = Object.keys(monthlyData).sort();
         
-        const monthLabels = sortedMonths.map(key => monthlyData[key].label);
-        const expectedData = sortedMonths.map(key => monthlyData[key].expectedAmount);
-        const receivedData = sortedMonths.map(key => monthlyData[key].receivedAmount);
+        // Show only 6 months at a time with pagination
+        const monthsPerPage = 6;
+        const startIndex = state.barChartPage * monthsPerPage;
+        const endIndex = startIndex + monthsPerPage;
+        const paginatedMonths = sortedMonths.slice(startIndex, endIndex);
+        
+        const monthLabels = paginatedMonths.map(key => monthlyData[key].label);
+        const expectedData = paginatedMonths.map(key => monthlyData[key].expectedAmount);
+        const receivedData = paginatedMonths.map(key => monthlyData[key].receivedAmount);
 
         return {
             chart: {
                 type: 'bar',
-                height: 450,
+                height: 600,
                 toolbar: {
                     show: false,
                 },
@@ -378,9 +425,10 @@ function EmiReport() {
             plotOptions: {
                 bar: {
                     horizontal: false,
-                    columnWidth: '50%',
+                    columnWidth: '85%',
+                    barHeight: '100%',
                     dataLabels: {
-                        position: 'top',
+                        position: 'center',
                     },
                 },
             },
@@ -394,11 +442,11 @@ function EmiReport() {
                     }
                     return '';
                 },
-                offsetY: -20,
+                offsetY: 0,
                 style: {
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    colors: ['#304758']
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    colors: ['#ffffff']
                 },
                 background: {
                     enabled: false
@@ -407,11 +455,33 @@ function EmiReport() {
             series: [
                 {
                     name: 'Expected Amount (Due)',
-                    data: expectedData
+                    data: expectedData,
+                    dataLabels: {
+                        offsetY: 0,
+                        style: {
+                            fontSize: '14px',
+                            fontWeight: 700,
+                            colors: ['#ffffff']
+                        },
+                        background: {
+                            enabled: false
+                        }
+                    }
                 },
                 {
                     name: 'Received Amount (Paid)',
-                    data: receivedData
+                    data: receivedData,
+                    dataLabels: {
+                        offsetY: 0,
+                        style: {
+                            fontSize: '14px',
+                            fontWeight: 700,
+                            colors: ['#ffffff']
+                        },
+                        background: {
+                            enabled: false
+                        }
+                    }
                 }
             ],
             xaxis: {
@@ -474,7 +544,7 @@ function EmiReport() {
                     const pending = expected - received;
                     const receivedPercent = expected > 0 ? ((received / expected) * 100).toFixed(1) : 0;
                     const pendingPercent = expected > 0 ? ((pending / expected) * 100).toFixed(1) : 0;
-                    const monthData = monthlyData[sortedMonths[dataPointIndex]];
+                    const monthData = monthlyData[paginatedMonths[dataPointIndex]];
                     
                     return `
                         <div style="padding: 10px; background: #fff; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
@@ -512,7 +582,7 @@ function EmiReport() {
                 opacity: 0.9
             }
         };
-    }, [gridData]);
+    }, [gridData, state.barChartPage]);
 
     // Area Chart for Trends Over Time with different time periods
     const areaChartOptions = useMemo(() => {
@@ -980,17 +1050,60 @@ function EmiReport() {
                                                         tagClass="card-title mb-0" 
                                                     />
                                                     <CardBody>
-                                                        <div className="mb-3">
+                                                        <div className="mb-3 d-flex justify-content-between align-items-center">
                                                             <small className="text-muted">
                                                                 <i className="fa fa-info-circle me-1"></i>
-                                                                Blue bars show Expected Amount (Due), Green bars show Received Amount (Paid). Compare to see collection performance.
+                                                                Blue bars show Expected Amount (Due), Green bars show Received Amount (Paid). Amounts shown inside bars.
                                                             </small>
+                                                            {barChartOptions && (() => {
+                                                                const totalMonths = Object.keys(
+                                                                    gridData.reduce((acc, item) => {
+                                                                        const dueDate = item.DueDate || item.VoucherDate;
+                                                                        if (!dueDate) return acc;
+                                                                        try {
+                                                                            const date = new Date(dueDate);
+                                                                            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                                                                            acc[monthKey] = true;
+                                                                        } catch (e) {}
+                                                                        return acc;
+                                                                    }, {})
+                                                                ).length;
+                                                                const totalPages = Math.ceil(totalMonths / 6);
+                                                                const currentPage = state.barChartPage + 1;
+                                                                return (
+                                                                    <div className="d-flex align-items-center gap-3">
+                                                                        <small className="text-muted">
+                                                                            Page {currentPage} of {totalPages} | 
+                                                                            <span className="ms-2">
+                                                                                <i className="fa fa-mouse me-1"></i>
+                                                                                Ctrl + Scroll to navigate
+                                                                            </span>
+                                                                        </small>
+                                                                        <div className="btn-group btn-group-sm">
+                                                                            <Btn 
+                                                                                color="secondary" 
+                                                                                onClick={() => setState(prev => ({ ...prev, barChartPage: Math.max(0, prev.barChartPage - 1) }))}
+                                                                                disabled={state.barChartPage === 0}
+                                                                            >
+                                                                                <i className="fa fa-chevron-left"></i> Prev
+                                                                            </Btn>
+                                                                            <Btn 
+                                                                                color="secondary" 
+                                                                                onClick={() => setState(prev => ({ ...prev, barChartPage: Math.min(totalPages - 1, prev.barChartPage + 1) }))}
+                                                                                disabled={state.barChartPage >= totalPages - 1}
+                                                                            >
+                                                                                Next <i className="fa fa-chevron-right"></i>
+                                                                            </Btn>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </div>
                                                         <ReactApexChart
                                                             options={barChartOptions}
                                                             series={barChartOptions.series}
                                                             type="bar"
-                                                            height={450}
+                                                            height={600}
                                                         />
                                                     </CardBody>
                                                 </Card>

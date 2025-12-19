@@ -32,30 +32,30 @@ export const MenuList: MenuItem[] = [
         type: "link", 
         bookmark: true 
       },
-      { 
-        id: 6, 
-        title: "Country Master", 
-        path: `${process.env.PUBLIC_URL}/countryMaster`, 
-        icon: "Globe", 
-        type: "link", 
-        bookmark: true 
-      },
-      { 
-        id: 7, 
-        title: "State Master", 
-        path: `${process.env.PUBLIC_URL}/stateMaster`, 
-        icon: "Map", 
-        type: "link", 
-        bookmark: true 
-      },
-      { 
-        id: 8, 
-        title: "City Master", 
-        path: `${process.env.PUBLIC_URL}/cityMaster`, 
-        icon: "Map-pin", 
-        type: "link", 
-        bookmark: true 
-      },
+      // { 
+      //   id: 6, 
+      //   title: "Country Master", 
+      //   path: `${process.env.PUBLIC_URL}/countryMaster`, 
+      //   icon: "Globe", 
+      //   type: "link", 
+      //   bookmark: true 
+      // },
+      // { 
+      //   id: 7, 
+      //   title: "State Master", 
+      //   path: `${process.env.PUBLIC_URL}/stateMaster`, 
+      //   icon: "Map", 
+      //   type: "link", 
+      //   bookmark: true 
+      // },
+      // { 
+      //   id: 8, 
+      //   title: "City Master", 
+      //   path: `${process.env.PUBLIC_URL}/cityMaster`, 
+      //   icon: "Map-pin", 
+      //   type: "link", 
+      //   bookmark: true 
+      // },
       { 
         id: 10, 
         title: "Scheme Master", 
@@ -118,6 +118,14 @@ export const MenuList: MenuItem[] = [
         title: "Scheme Wise Report", 
         path: `${process.env.PUBLIC_URL}/schemeWiseReport`, 
         icon: "Briefcase", 
+        type: "link", 
+        bookmark: true 
+      },
+      { 
+        id: 16, 
+        title: "Day Book", 
+        path: `${process.env.PUBLIC_URL}/DayBook`, 
+        icon: "Book-open", 
         type: "link", 
         bookmark: true 
       }

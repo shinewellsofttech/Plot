@@ -20,6 +20,7 @@ import ReceiptEntryForm from "../Pages/Transaction/ReceiptEntryForm";
 import EmiReport from "../Pages/Reports/EmiReport";
 import LedgerReport from "../Pages/Reports/LedgerReport";
 import SchemeWiseReport from "../Pages/Reports/SchemeWiseReport";
+import DayBook from "../Pages/Reports/DayBook";
 export const routes = [
   // Sample Page
   { path: `${process.env.PUBLIC_URL}/reports`, Component: <Report /> },
@@ -44,4 +45,6 @@ export const routes = [
   { path: `${process.env.PUBLIC_URL}/emiReport`, Component: <EmiReport /> },
   { path: `${process.env.PUBLIC_URL}/ledgerReport`, Component: <LedgerReport /> },
   { path: `${process.env.PUBLIC_URL}/schemeWiseReport`, Component: <SchemeWiseReport /> },
+  { path: `${process.env.PUBLIC_URL}/DayBook`, Component: <DayBook /> },
+
 ];

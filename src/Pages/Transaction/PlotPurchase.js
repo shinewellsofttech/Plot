@@ -13,17 +13,27 @@ import { toast } from "react-toastify";
 import jsPDF from "jspdf";
 
 // Total calculation function
-const TotalCalculation = (plotData, setState) => {
+const TotalCalculation = (plotData, formData, setState) => {
   // Example: Calculate totalQty and totalAmount
   console.log("Calculating totals with plotData:", plotData);
   const totalQty = plotData.reduce((sum, item) => sum + (parseFloat(item.Qty) || 0), 0);
   const totalAmount = plotData.reduce((sum, item) => sum + ((parseFloat(item.Qty) || 0) * (parseFloat(item.ActualPrice) || 0)), 0);
-    console.log("Total Qty:", totalQty, "Total Amount:", totalAmount);
+  const downPayment = parseFloat(formData?.DownPayment) || 0;
+  const TotalAmt = totalAmount - downPayment;
+  const NetAmt = totalAmount - downPayment;
+  console.log("Total Qty:", totalQty, "Total Amount:", totalAmount, "Total Amt:", TotalAmt, "Net Amt:", NetAmt);
   setState((prev) => ({
     ...prev,
+    formData: {
+      ...prev.formData,
+      TotalQty: totalQty.toString(),
+      TotalAmt: TotalAmt.toFixed(2),
+      NetAmt: NetAmt.toFixed(2),
+    },
     totals: {
       totalQty,
       totalAmount,
+      TotalAmt,
     },
   }));
 };
@@ -68,6 +78,7 @@ const PlotPurchase = () => {
     editId: 0,
     isSaving: false,
     isAdding: false,
+    canEdit: true,
     formData: {
       PurchaseRef: "",
       VoucherNo: "",
@@ -77,7 +88,11 @@ const PlotPurchase = () => {
       DownPayment: "",
       NoOfInstallment: "",
       EMIStartDate: "",
+      EMIEndDate: "",
       EMIAmount: "",
+      TotalQty: "0",
+      TotalAmt: "0.00",
+      NetAmt: "0.00",
     },
     plotData: [
       {
@@ -159,7 +174,7 @@ const PlotPurchase = () => {
     if (["DownPayment", "NoOfInstallment"].includes(field)) {
       EmiCalculation(state.plotData, { ...state.formData, [field]: value }, setState);
     }
-    TotalCalculation (state.plotData, setState);
+    TotalCalculation(state.plotData, { ...state.formData, [field]: value }, setState);
     if (field === "F_SchemeMaster") {
       Fn_FillListData(
         dispatch,
@@ -199,6 +214,11 @@ const PlotPurchase = () => {
           ? new Date(selectedPurchaseRef.EMIStartDate).toISOString().split("T")[0]
           : "";
 
+        // Format EMIEndDate if it exists
+        const emiEndDate = selectedPurchaseRef.EMIEndDate
+          ? new Date(selectedPurchaseRef.EMIEndDate).toISOString().split("T")[0]
+          : "";
+
         // Map VoucherL data to plotData format
         // Keep isNew as true so dropdown remains editable
         const mappedPlotData = Array.isArray(voucherLData) && voucherLData.length > 0
@@ -230,10 +250,14 @@ const PlotPurchase = () => {
           DownPayment: selectedPurchaseRef.DownPayment?.toString() || "",
           NoOfInstallment: selectedPurchaseRef.NoOfInstallment?.toString() || "",
           EMIStartDate: emiStartDate,
+          EMIEndDate: emiEndDate,
           EMIAmount: selectedPurchaseRef.EMIAmount?.toString() || "",
           VoucherNo: selectedPurchaseRef.VoucherNo?.toString() || "",
+          TotalQty: selectedPurchaseRef.TotalQty?.toString() || "",
+          TotalAmt: selectedPurchaseRef.TotalAmt?.toString() || "",
+          NetAmt: selectedPurchaseRef.NetAmt?.toString() || "",
         };
-
+        console.log("newFormData--------------->",newFormData);
         // Fetch party and plot options based on scheme (await to ensure they're loaded first)
         if (selectedPurchaseRef.F_SchemeMaster) {
           await Fn_FillListData(
@@ -246,10 +270,15 @@ const PlotPurchase = () => {
             dispatch,
             setState,
             "plotOptions",
-            API_URL_PLOT1 + "/Id/" + selectedPurchaseRef.F_SchemeMaster
+            API_URL_PLOT1 + "/TBL.F_SchemeMaster/" + selectedPurchaseRef.F_SchemeMaster
           );
         }
 
+        // Check if TotalAmt and NetAmt are same to determine if editing is allowed
+        const totalAmt = parseFloat(newFormData.TotalAmt) || 0;
+        const netAmt = parseFloat(newFormData.NetAmt) || 0;
+        const canEdit = totalAmt === netAmt;
+        
         // Update state with new form data and plot data after options are loaded
         // Don't set editMode to true here - only load the data
         setState((prev) => ({
@@ -258,11 +287,12 @@ const PlotPurchase = () => {
           plotData: mappedPlotData,
           editMode: false, // Keep editMode false when selecting from dropdown
           editId: parseInt(value), // Store the ID for later use when Edit is clicked
+          canEdit: canEdit, // Set whether editing is allowed based on amount match
         }));
 
         // Calculate totals and EMI with new data
-        TotalCalculation(mappedPlotData, setState);
-        EmiCalculation(mappedPlotData, newFormData, setState);
+        // TotalCalculation(mappedPlotData, newFormData, setState);
+        // EmiCalculation(mappedPlotData, newFormData, setState);
       }
     } else if (field === "PurchaseRef" && !value) {
       // Reset form when PurchaseRef is cleared
@@ -276,6 +306,7 @@ const PlotPurchase = () => {
           DownPayment: "",
           NoOfInstallment: "",
           EMIStartDate: "",
+          EMIEndDate: "",
           EMIAmount: "",
         },
         plotData: [
@@ -319,7 +350,7 @@ const PlotPurchase = () => {
       plotData: newPlotData,
     }));
     EmiCalculation(newPlotData, state.formData, setState);
-    TotalCalculation(newPlotData, setState);
+    TotalCalculation(newPlotData, state.formData, setState);
   };
 
   // Handler for plot table changes (now uses EditTableRow)
@@ -378,7 +409,11 @@ const PlotPurchase = () => {
         DownPayment: "",
         NoOfInstallment: "",
         EMIStartDate: "",
+        EMIEndDate: "",
         EMIAmount: "",
+        TotalQty: "0",
+        TotalAmt: "0.00",
+        NetAmt: "0.00",
       },
       plotData: [
         {
@@ -392,6 +427,7 @@ const PlotPurchase = () => {
       ],
       editMode: false,
       editId: 0,
+      canEdit: true,
       voucherLOptions: [],
     }));
     
@@ -410,6 +446,11 @@ const PlotPurchase = () => {
   const handleEdit = () => {
     // Enable edit mode when Edit button is clicked
     if (state.formData.PurchaseRef && state.editId > 0) {
+      // Check if TotalAmt and NetAmt match
+      if (!state.canEdit) {
+        toast.error("Total Amount and Net Amount do not match! You have created receipt against it so can not edit.");
+        return;
+      }
       setState((prev) => ({
         ...prev,
         editMode: true,
@@ -434,18 +475,13 @@ const PlotPurchase = () => {
       formData.append("DownPayment", state.formData.DownPayment || "");
       formData.append("NoOfInstallment", state.formData.NoOfInstallment || "");
       formData.append("EMIStartDate", state.formData.EMIStartDate || "");
+      formData.append("EMIEndDate", state.formData.EMIEndDate || "");
       formData.append("EMIAmount", state.formData.EMIAmount || "");
       
-      // Calculate and append totals
-      const totalQty = state.totals?.totalQty || 0;
-      const totalAmount = state.totals?.totalAmount || 0;
-      const downPayment = parseFloat(state.formData.DownPayment) || 0;
-      const totalDueAmount = totalAmount - downPayment;
-      const netAmount = totalAmount - downPayment;
-      
-      formData.append("TotalQty", totalQty.toString());
-      formData.append("TotalAmt", totalDueAmount.toFixed(2));
-      formData.append("NetAmt", netAmount.toFixed(2));
+      // Append totals from formData
+      formData.append("TotalQty", state.formData.TotalQty || "0");
+      formData.append("TotalAmt", state.formData.TotalAmt || "0.00");
+      formData.append("NetAmt", state.formData.NetAmt || "0.00");
       
       // Use editId if in edit mode, otherwise use 0 for new record
       const recordId = state.editMode ? state.editId : 0;
@@ -618,6 +654,15 @@ const PlotPurchase = () => {
         yPos += 7;
       }
 
+      // EMI End Date
+      if (state.formData.EMIEndDate) {
+        pdf.setFont(undefined, 'bold');
+        pdf.text('EMI End Date:', margin, yPos);
+        pdf.setFont(undefined, 'normal');
+        pdf.text(formatDate(state.formData.EMIEndDate), margin + 40, yPos);
+        yPos += 7;
+      }
+
       // EMI Amount
       if (state.formData.EMIAmount) {
         pdf.setFont(undefined, 'bold');
@@ -692,11 +737,9 @@ const PlotPurchase = () => {
       // Totals Section
       pdf.setFontSize(10);
       pdf.setFont(undefined, 'bold');
-      const totalQty = state.totals?.totalQty || 0;
-      const totalAmount = state.totals?.totalAmount || 0;
-      const downPayment = parseFloat(state.formData.DownPayment) || 0;
-      const totalDueAmount = totalAmount - downPayment;
-      const netAmount = totalAmount - downPayment;
+      const totalQty = state.formData.TotalQty || 0;
+      const totalDueAmount = parseFloat(state.formData.TotalAmt) || 0;
+      const netAmount = parseFloat(state.formData.NetAmt) || 0;
 
       pdf.text('Total Qty:', pageWidth - margin - 60, yPos);
       pdf.setFont(undefined, 'normal');
@@ -752,8 +795,12 @@ const PlotPurchase = () => {
           F_LedgerMaster: "",
           DownPayment: "",
           NoOfInstallment: "",
-          EMIStartDate: new Date().toISOString().split("T")[0],
+          EMIStartDate: "",
+          EMIEndDate: "",
           EMIAmount: "",
+          TotalQty: "0",
+          TotalAmt: "0.00",
+          NetAmt: "0.00",
         },
         plotData: [
           {
@@ -767,6 +814,7 @@ const PlotPurchase = () => {
         ],
         editMode: false,
         editId: 0,
+        canEdit: true,
         voucherLOptions: [],
       }));
       
@@ -779,10 +827,57 @@ const PlotPurchase = () => {
     }
   };
 
-  const handleDelete = () => {
-    if (window.confirm("Are you sure you want to delete?")) {
-      console.log("Delete clicked");
-      // Add your delete logic here
+  const handleDelete = async() => {
+    console.log("handleDelete called with id:", state.editId);
+    if (!state.editId || state.editId === 0) {
+      toast.error("Please select a purchase record to delete");
+      return;
+    }
+    if (window.confirm("Are you sure you want to delete this purchase?")) {
+      const deleteUrl = API_WEB_URLS.MASTER + "/0/token/DeletePlotPurchase/Id/" + state.editId;
+      console.log("Calling delete with:", { id: state.editId, deleteUrl });
+      const res = await Fn_FillListData(dispatch, setState, "New", deleteUrl);
+      console.log("res", res);
+      if(res && res.length > 0 && res[0].Id > 0){
+        toast.success("Purchase deleted successfully");
+        // Reset form after successful deletion
+        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        await Fn_FillListData(dispatch, setState, "purchaseRefOptions", API_URL_PURCHASE_REF + "/TBL.F_CompanyMaster/" + obj.CompanyId);
+        
+        setState((prev) => ({
+          ...prev,
+          formData: {
+            PurchaseRef: "",
+            VoucherDate: new Date().toISOString().split("T")[0],
+            F_SchemeMaster: "",
+            F_LedgerMaster: "",
+            DownPayment: "",
+            NoOfInstallment: "",
+            EMIStartDate: "",
+            EMIEndDate: "",
+            EMIAmount: "",
+            TotalQty: "0",
+            TotalAmt: "0.00",
+            NetAmt: "0.00",
+          },
+          plotData: [
+            {
+              F_PlotMaster: "",
+              PlotSize: "0",
+              TentativePrice: "0",
+              Qty: "0",
+              ActualPrice: "0",
+              isNew: true,
+            },
+          ],
+          editMode: false,
+          editId: 0,
+          canEdit: true,
+          voucherLOptions: [],
+        }));
+      }else{
+        toast.error("Failed to delete purchase");
+      }
     }
   };
 
@@ -822,7 +917,7 @@ const PlotPurchase = () => {
               <CardBody>
                 {/* First Row */}
                 <Row className="mb-3">
-                  <Col md="2">
+                  <Col md="3">
                     <Label className="form-label">Purchase</Label>
                     <select
                       className="form-select"
@@ -843,8 +938,8 @@ const PlotPurchase = () => {
                       ))}
                     </select>
                   </Col>
-                  <Col md="2">
-                    <Label className="form-label">Voucher No</Label>
+                  <Col md="1">
+                    <Label className="form-label">V.No</Label>
                     <Input
                       type="text"
                       value={state.formData.VoucherNo}
@@ -900,7 +995,7 @@ const PlotPurchase = () => {
 
                 {/* Second Row */}
                 <Row className="mb-3">
-                  <Col md="3">
+                  <Col md="2">
                     <Label className="form-label">Down Payment</Label>
                     <Input
                       type="number"
@@ -911,7 +1006,7 @@ const PlotPurchase = () => {
                       disabled={state.editId > 0 && !state.editMode}
                     />
                   </Col>
-                  <Col md="3">
+                  <Col md="2">
                     <Label className="form-label">No.Of Installment</Label>
                     <Input
                       type="number"
@@ -922,12 +1017,22 @@ const PlotPurchase = () => {
                       disabled={state.editId > 0 && !state.editMode}
                     />
                   </Col>
-                  <Col md="3">
+                  <Col md="2">
                     <Label className="form-label">EMI Start Date</Label>
                     <Input
                       type="date"
                       value={state.formData.EMIStartDate}
                       onChange={(e) => handleFormChange("EMIStartDate", e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      disabled={state.editId > 0 && !state.editMode}
+                    />
+                  </Col>
+                  <Col md="2">
+                    <Label className="form-label">EMI End Date</Label>
+                    <Input
+                      type="date"
+                      value={state.formData.EMIEndDate}
+                      onChange={(e) => handleFormChange("EMIEndDate", e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault();
@@ -943,7 +1048,7 @@ const PlotPurchase = () => {
                       disabled={state.editId > 0 && !state.editMode}
                     />
                   </Col>
-                  <Col md="3">
+                  <Col md="2">
                     <Label className="form-label">EMI Amount</Label>
                     <Input
                       type="number"
@@ -969,21 +1074,27 @@ const PlotPurchase = () => {
 
                 {/* Totals Table Section (same design as PlotPurchaseTable) */}
                 <div className="row mt-3">
-                  <div className="col-md-8"></div>
+                  <div className="col-md-8">
+                    {state.editId > 0 && !state.canEdit && (
+                      <div className="alert alert-warning" role="alert">
+                        <i className="icon-alert-triangle"></i> <strong>Warning:</strong> Total Amount and Net Amount do not match! You have created receipt against it so can not edit.
+                      </div>
+                    )}
+                  </div>
                   <div className="col-md-4">
                     <table className="table table-bordered">
                       <tbody>
                         <tr>
                           <td><strong>Total Qty:</strong></td>
-                          <td className="text-end">{state.totals?.totalQty || 0}</td>
+                          <td className="text-end">{state.formData.TotalQty || 0}</td>
                         </tr>
                         <tr>
                           <td><strong>Total Due Amount:</strong></td>
-                          <td className="text-end">{((state.totals?.totalAmount || 0) - (parseFloat(state.formData.DownPayment) || 0)).toFixed(2)}</td>
+                          <td className="text-end">{parseFloat(state.formData.TotalAmt || 0).toFixed(2)}</td>
                         </tr>
                         <tr>
                           <td><strong>Net Amount:</strong></td>
-                          <td className="text-end">{((state.totals?.totalAmount || 0) - (parseFloat(state.formData.DownPayment) || 0)).toFixed(2)}</td>
+                          <td className="text-end">{parseFloat(state.formData.NetAmt || 0).toFixed(2)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -1024,7 +1135,8 @@ const PlotPurchase = () => {
                           color="info" 
                           className="me-2" 
                           onClick={handleEdit}
-                          disabled={state.isSaving || state.isAdding || state.editMode}
+                          disabled={state.isSaving || state.isAdding || state.editMode || !state.canEdit}
+                          title={!state.canEdit ? "Total Amount and Net Amount do not match! You have created receipt against it so can not edit" : ""}
                         >
                           {state.editMode ? "Editing..." : "Edit"}
                         </Btn>

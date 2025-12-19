@@ -33,24 +33,17 @@ const PageList_CityMasterContainer = () => {
     navigate("/addEdit_CityMaster", { state: { Id: id } });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     console.log("handleDelete called with id:", id);
     if (!id || id === 0) {
       alert("Invalid ID for deletion");
       return;
     }
     if (window.confirm("Are you sure you want to delete this city?")) {
-      const deleteUrl = API_WEB_URLS.MASTER + "/0/token/CityMaster/Id";
+      const deleteUrl = API_WEB_URLS.MASTER + "/0/token/DeleteCityMaster/Id";
       console.log("Calling Fn_DeleteData with:", { id, deleteUrl });
-      Fn_DeleteData(dispatch, setState, id, deleteUrl, API_URL)
-        .then(() => {
-          console.log("Delete successful, reloading data");
-          loadData();
-        })
-        .catch((error) => {
-          console.error("Delete error:", error);
-          alert("Failed to delete. Please check console for details.");
-        });
+    const res= await  Fn_FillListData(dispatch, setState, "New", deleteUrl);
+    console.log("res", res);
     }
   };
 
