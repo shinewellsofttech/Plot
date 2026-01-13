@@ -12,7 +12,7 @@ const HeaderLogoWrapper = () => {
     <div className="header-logo-wrapper col-auto p-0">
       <div className="logo-wrapper">
         <Link to={"/"}>
-          <Image className="img-fluid" src={dynamicImage("logo/logo.png")} alt="CrocsLogo" />
+          <Image className="img-fluid" src={dynamicImage("logo/logo.png")} alt="Logo" />
         </Link>
       </div>
       <div className="toggle-sidebar">

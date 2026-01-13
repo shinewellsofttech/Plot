@@ -26,7 +26,7 @@ const MessageBox = () => {
             </LI>
         ))}
         <LI>
-            <Link className="f-w-700" to={"/crocs/email/letterbox"}>{CheckAll}</Link>
+            <Link className="f-w-700" to={"/email/letterbox"}>{CheckAll}</Link>
         </LI>
     </UL>
   );

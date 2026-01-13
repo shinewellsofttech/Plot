@@ -7,8 +7,8 @@ import RTL from './RTL';
 import BoxLayout from './BoxLayout';
 
 const LayoutType = () => {
-  const localStorageLayout = ConfigDB.data.settings.layout_type;
-  const [layout_type, setLayout_type] = useState(localStorageLayout);
+  const sessionStorageLayout = ConfigDB.data.settings.layout_type;
+  const [layout_type, setLayout_type] = useState(sessionStorageLayout);
   const handleLayout = (layout: string) => {
     setLayout_type(layout);
     if (layout === "rtl") {

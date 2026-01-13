@@ -17,6 +17,8 @@ import PageList_PlotMaster from "../Pages/Masters/PageList_PlotMaster";
 import Report from "../Pages/Dashboard/Report";
 import PlotPurchase from "../Pages/Transaction/PlotPurchase";
 import ReceiptEntryForm from "../Pages/Transaction/ReceiptEntryForm";
+import TokenReceipt from "../Pages/Transaction/TokenReceipt";
+import SendSms from "../Pages/Transaction/SendSms";
 import EmiReport from "../Pages/Reports/EmiReport";
 import LedgerReport from "../Pages/Reports/LedgerReport";
 import SchemeWiseReport from "../Pages/Reports/SchemeWiseReport";
@@ -42,6 +44,8 @@ export const routes = [
   { path: `${process.env.PUBLIC_URL}/plotMaster`, Component: <PageList_PlotMaster /> },
   { path: `${process.env.PUBLIC_URL}/plotPurchase`, Component: <PlotPurchase /> },
   { path: `${process.env.PUBLIC_URL}/receiptEntry`, Component: <ReceiptEntryForm /> },
+  { path: `${process.env.PUBLIC_URL}/tokenReceipt`, Component: <TokenReceipt /> },
+  { path: `${process.env.PUBLIC_URL}/sendSms`, Component: <SendSms /> },
   { path: `${process.env.PUBLIC_URL}/emiReport`, Component: <EmiReport /> },
   { path: `${process.env.PUBLIC_URL}/ledgerReport`, Component: <LedgerReport /> },
   { path: `${process.env.PUBLIC_URL}/schemeWiseReport`, Component: <SchemeWiseReport /> },

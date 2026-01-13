@@ -27,7 +27,7 @@ const PageList_SchemeMasterContainer = () => {
   }, []);
 
   const loadData = () => {
-     const data = JSON.parse(localStorage.getItem("authUser")) || [];
+     const data = JSON.parse(sessionStorage.getItem("authUser")) || [];
     console.log(data)
     Fn_FillListData(dispatch, setState, "SchemeMasterList", API_URL + data.CompanyId
 

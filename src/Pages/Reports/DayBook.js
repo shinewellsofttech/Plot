@@ -16,6 +16,33 @@ function DayBook() {
     const API_URL_PARTY = API_WEB_URLS.MASTER + "/0/token/LedgerMaster";
     const API_URL_REPORT = 'DayBook/0/token';
 
+    // Helper function to format date as YYYY-MM-DD without timezone issues
+    const formatDateToString = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    // Helper function to get current month start and end dates
+    const getCurrentMonthDates = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        
+        // First day of current month
+        const firstDay = new Date(year, month, 1);
+        const fromDate = formatDateToString(firstDay);
+        
+        // Last day of current month
+        const lastDay = new Date(year, month + 1, 0);
+        const toDate = formatDateToString(lastDay);
+        
+        return { fromDate, toDate };
+    };
+
+    const { fromDate: currentMonthStart, toDate: currentMonthEnd } = getCurrentMonthDates();
+
     const [state, setState] = useState({
         schemeOptions: [],
         partyOptions: [],
@@ -23,8 +50,8 @@ function DayBook() {
         formData: {
             F_SchemeMaster: "",
             F_LedgerMaster: "",
-            FromDate: "",
-            ToDate: "",
+            FromDate: currentMonthStart,
+            ToDate: currentMonthEnd,
         },
     });
 
@@ -32,7 +59,7 @@ function DayBook() {
     const safeArray = arr => Array.isArray(arr) ? arr : [];
 
     useEffect(() => {
-        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         // Load schemes
         Fn_FillListData(
             dispatch,
@@ -41,6 +68,36 @@ function DayBook() {
             API_URL_SCHEME + "/TBL.F_CompanyMaster/" + obj.CompanyId
         );
     }, [dispatch]);
+
+    // Auto-generate report on component mount with default values
+    useEffect(() => {
+        const generateInitialReport = async () => {
+            const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+            
+            setState((prev) => ({ ...prev, isProgress: true }));
+
+            const formData = new FormData();
+            formData.append("F_CompanyMaster", obj.CompanyId || "");
+            
+            // Append default date values (current month)
+            formData.append("FromDate", currentMonthStart);
+            formData.append("ToDate", currentMonthEnd);
+
+            await Fn_GetReport(
+                dispatch,
+                setGridData,
+                "gridData",
+                API_URL_REPORT,
+                { arguList: { id: 0, formData: formData } },
+                true
+            );
+
+            setState((prev) => ({ ...prev, isProgress: false }));
+        };
+
+        generateInitialReport();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Run only once on mount
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
@@ -95,7 +152,7 @@ function DayBook() {
     };
 
     const handleGenerateReport = async () => {
-        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         
         setState((prev) => ({ ...prev, isProgress: true }));
 
@@ -130,13 +187,14 @@ function DayBook() {
 
     // Reset filters
     const handleReset = () => {
+        const { fromDate, toDate } = getCurrentMonthDates();
         setState((prev) => ({
             ...prev,
             formData: {
                 F_SchemeMaster: "",
                 F_LedgerMaster: "",
-                FromDate: "",
-                ToDate: "",
+                FromDate: fromDate,
+                ToDate: toDate,
             },
             partyOptions: [],
         }));

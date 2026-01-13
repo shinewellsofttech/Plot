@@ -8,9 +8,11 @@ const ProfileBox = () => {
   const handleClick = (event: React.MouseEvent<HTMLAnchorElement, MouseEvent>, name: string, link: string) => {
     if (name === "Log Out") {
       event.preventDefault();
-      localStorage.removeItem("login");
-      localStorage.removeItem("authUser");
-      navigate(link || `${process.env.PUBLIC_URL}/login`, { replace: true });
+      // Clear all authentication data
+      sessionStorage.removeItem("login");
+      sessionStorage.removeItem("authUser");
+      // Use window.location.href for direct navigation to ensure clean state
+      window.location.href = `${process.env.PUBLIC_URL}/login`;
     }
   };
 

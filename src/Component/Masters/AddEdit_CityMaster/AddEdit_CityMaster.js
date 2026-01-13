@@ -31,7 +31,7 @@ const AddEdit_CityMasterContainer = () => {
 
   useEffect(() => {
     Fn_FillListData(dispatch, setState, "CountryArray", API_URL_COUNTRY + "/Id/0");
-    Fn_FillListData(dispatch, setState, "StateArray", API_URL_STATE + "/Id/0");
+   
 
     const Id = (location.state && location.state.Id) || 0;
 
@@ -64,7 +64,7 @@ const AddEdit_CityMasterContainer = () => {
   });
 
   const handleSubmit = (values) => {
-    const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+    const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
     let vformData = new FormData();
 
     vformData.append("F_CountryMaster", values.F_CountryMaster);
@@ -87,16 +87,11 @@ const AddEdit_CityMasterContainer = () => {
   const handleCountryChange = (e, setFieldValue) => {
     const countryId = e.target.value;
     setFieldValue("F_CountryMaster", countryId);
-    setFieldValue("F_StateMaster", ""); // Reset state when country changes
+    setFieldValue("F_StateMaster", "");
+    // Reset state when country changes
 
     if (countryId) {
-      const filtered = state.StateArray.filter(
-        (item) => item.F_CountryMaster == countryId
-      );
-      setState((prevState) => ({
-        ...prevState,
-        FilteredStateArray: filtered,
-      }));
+      Fn_FillListData(dispatch, setState, "StateArray", API_URL_STATE + "/TBL.F_CountryMaster/"+ countryId);
     } else {
       setState((prevState) => ({
         ...prevState,
@@ -214,7 +209,7 @@ const AddEdit_CityMasterContainer = () => {
                               disabled={!values.F_CountryMaster}
                             >
                               <option value="">Select State</option>
-                              {state.FilteredStateArray.map((item) => (
+                              {state.StateArray.map((item) => (
                                 <option key={item.Id} value={item.Id}>
                                   {item.Name}
                                 </option>

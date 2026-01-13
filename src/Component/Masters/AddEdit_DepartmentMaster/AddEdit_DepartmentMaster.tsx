@@ -51,7 +51,7 @@ const AddEdit_DepartmentMasterContainer = () => {
   });
 
   const handleSubmit = (values: FormValues) => {
-    const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+    const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
     let vformData = new FormData();
 
     vformData.append("Name", values.Name);

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useDispatch } from 'react-redux';
-import { Card, CardBody, Col, Container, Row, Label, Input, Table } from "reactstrap";
+import { Card, CardBody, Col, Container, Row, Label, Input, Table, Modal, ModalHeader, ModalBody, ModalFooter } from "reactstrap";
 import ReactApexChart from "react-apexcharts";
 import { Btn } from "../../AbstractElements";
 import Breadcrumbs from "../../CommonElements/Breadcrumbs/Breadcrumbs";
@@ -11,12 +11,34 @@ import { API_WEB_URLS } from "../../constants/constAPI";
 function EmiReport() {
     const dispatch = useDispatch();
     const [gridData, setGridData] = useState([]);
+    const [hasInitialLoad, setHasInitialLoad] = useState(false);
     
     // API URLs for dropdowns
     const API_URL_SCHEME = API_WEB_URLS.MASTER + "/0/token/SchemeMaster";
     const API_URL_VOUCHER = API_WEB_URLS.MASTER + "/0/token/VoucherH";
     const API_URL_PARTY = API_WEB_URLS.MASTER + "/0/token/LedgerMaster";
     const API_URL_REPORT = 'EmiReport/0/token';
+
+    // Helper to get first and last date of current month
+    const getCurrentMonthDates = () => {
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        
+        const formatDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+        
+        return {
+            firstDate: formatDate(firstDay),
+            lastDate: formatDate(lastDay)
+        };
+    };
+
+    const currentMonthDates = getCurrentMonthDates();
 
     const [state, setState] = useState({
         schemeOptions: [],
@@ -30,9 +52,16 @@ function EmiReport() {
             F_VoucherH: "",
             F_LedgerMaster: "",
             EMIStatus: "",
-            FromDate: "",
-            ToDate: "",
+            FromDate: currentMonthDates.firstDate,
+            ToDate: currentMonthDates.lastDate,
             OverdueOnly: false,
+        },
+        modalData: {
+            isOpen: false,
+            title: "",
+            filteredData: [],
+            filterType: "", // 'pie-status', 'donut-amount', 'bar-month'
+            filterValue: "",
         },
     });
 
@@ -41,7 +70,7 @@ function EmiReport() {
 
     // Load initial data
     useEffect(() => {
-        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         // Load schemes
         Fn_FillListData(
             dispatch,
@@ -50,6 +79,42 @@ function EmiReport() {
             API_URL_SCHEME + "/TBL.F_CompanyMaster/" + obj.CompanyId
         );
     }, [dispatch]);
+
+    // Auto-generate report on page load with default values
+    useEffect(() => {
+        const generateReportOnLoad = async () => {
+            // Only generate if schemes are loaded and we haven't generated yet
+            if (state.schemeOptions.length === 0 || hasInitialLoad) return;
+            
+            const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+            const formData = new FormData();
+            
+            // Always append F_CompanyMaster (required)
+            formData.append("F_CompanyMaster", obj.CompanyId || "");
+            
+            // Append default dates (current month)
+            const dates = getCurrentMonthDates();
+            formData.append("FromDate", dates.firstDate);
+            formData.append("ToDate", dates.lastDate);
+            
+            setHasInitialLoad(true);
+            setState((prev) => ({ ...prev, isProgress: true }));
+
+            await Fn_GetReport(
+                dispatch,
+                setGridData,
+                "gridData",
+                API_URL_REPORT,
+                { arguList: { id: 0, formData: formData } },
+                true
+            );
+
+            setState((prev) => ({ ...prev, isProgress: false, barChartPage: 0 }));
+        };
+
+        generateReportOnLoad();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state.schemeOptions.length]);
 
     // Handle Ctrl + Scroll for bar chart pagination
     useEffect(() => {
@@ -92,7 +157,7 @@ function EmiReport() {
 
     // Handle Scheme change - load vouchers and parties
     const handleSchemeChange = async (schemeId) => {
-        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         
         setState((prev) => ({
             ...prev,
@@ -157,7 +222,7 @@ function EmiReport() {
     };
 
     const handleGenerateReport = async () => {
-        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         const formData = new FormData();
         
         // Always append F_CompanyMaster (required)
@@ -307,6 +372,30 @@ function EmiReport() {
         chart: {
             type: 'pie',
             height: 350,
+            events: {
+                dataPointSelection: function(event, chartContext, config) {
+                    const selectedIndex = config.dataPointIndex;
+                    const status = selectedIndex === 0 ? 'Paid' : 'Pending';
+                    const filteredData = gridData.filter(item => {
+                        if (status === 'Paid') {
+                            return item.EMIStatus === 'Paid';
+                        } else {
+                            return item.EMIStatus === 'Pending' || !item.EMIStatus;
+                        }
+                    });
+                    
+                    setState(prev => ({
+                        ...prev,
+                        modalData: {
+                            isOpen: true,
+                            title: `${status} EMIs Details`,
+                            filteredData: filteredData,
+                            filterType: 'pie-status',
+                            filterValue: status,
+                        }
+                    }));
+                }
+            }
         },
         labels: ['Paid', 'Pending'],
         series: [summaryStats.paidCount, summaryStats.pendingCount],
@@ -325,13 +414,45 @@ function EmiReport() {
                 }
             }
         }]
-    }), [summaryStats]);
+    }), [summaryStats, gridData]);
 
     // Donut Chart for Amount Distribution
     const donutChartOptions = useMemo(() => ({
         chart: {
             type: 'donut',
             height: 350,
+            events: {
+                dataPointSelection: function(event, chartContext, config) {
+                    const selectedIndex = config.dataPointIndex;
+                    const amountType = selectedIndex === 0 ? 'Paid' : 'Pending';
+                    let filteredData = [];
+                    
+                    if (amountType === 'Paid') {
+                        filteredData = gridData.filter(item => {
+                            const emiAmount = parseFloat(item.EMIAmount) || 0;
+                            const pendingAmount = parseFloat(item.PendingAmount) || 0;
+                            const paidAmount = emiAmount - pendingAmount;
+                            return paidAmount > 0;
+                        });
+                    } else {
+                        filteredData = gridData.filter(item => {
+                            const pendingAmount = parseFloat(item.PendingAmount) || 0;
+                            return pendingAmount > 0;
+                        });
+                    }
+                    
+                    setState(prev => ({
+                        ...prev,
+                        modalData: {
+                            isOpen: true,
+                            title: `${amountType} Amount EMIs Details`,
+                            filteredData: filteredData,
+                            filterType: 'donut-amount',
+                            filterValue: amountType,
+                        }
+                    }));
+                }
+            }
         },
         labels: ['Paid Amount', 'Pending Amount'],
         series: [summaryStats.totalPaidAmount, summaryStats.totalPendingAmount],
@@ -361,7 +482,7 @@ function EmiReport() {
                 }
             }
         }
-    }), [summaryStats]);
+    }), [summaryStats, gridData]);
 
     // Monthly Bar Chart - Expected vs Received Amount by Month
     const barChartOptions = useMemo(() => {
@@ -413,6 +534,10 @@ function EmiReport() {
         const expectedData = paginatedMonths.map(key => monthlyData[key].expectedAmount);
         const receivedData = paginatedMonths.map(key => monthlyData[key].receivedAmount);
 
+        // Store monthlyData and paginatedMonths for use in event handler
+        const chartMonthlyData = monthlyData;
+        const chartPaginatedMonths = paginatedMonths;
+
         return {
             chart: {
                 type: 'bar',
@@ -421,6 +546,40 @@ function EmiReport() {
                     show: false,
                 },
                 stacked: false, // Grouped bars for comparison
+                events: {
+                    dataPointSelection: function(event, chartContext, config) {
+                        const dataPointIndex = config.dataPointIndex;
+                        const seriesIndex = config.seriesIndex;
+                        const monthKey = chartPaginatedMonths[dataPointIndex];
+                        const monthLabel = chartMonthlyData[monthKey]?.label || 'Unknown Month';
+                        
+                        // Filter data for the selected month
+                        const filteredData = gridData.filter(item => {
+                            const dueDate = item.DueDate || item.VoucherDate;
+                            if (!dueDate) return false;
+                            try {
+                                const date = new Date(dueDate);
+                                const itemMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                                return itemMonthKey === monthKey;
+                            } catch (e) {
+                                return false;
+                            }
+                        });
+                        
+                        const barType = seriesIndex === 0 ? 'Expected' : 'Received';
+                        
+                        setState(prev => ({
+                            ...prev,
+                            modalData: {
+                                isOpen: true,
+                                title: `${monthLabel} - ${barType} Amount EMIs`,
+                                filteredData: filteredData,
+                                filterType: 'bar-month',
+                                filterValue: `${monthKey}-${barType}`,
+                            }
+                        }));
+                    }
+                }
             },
             plotOptions: {
                 bar: {
@@ -580,7 +739,9 @@ function EmiReport() {
             },
             fill: {
                 opacity: 0.9
-            }
+            },
+            monthlyData: monthlyData,
+            paginatedMonths: paginatedMonths
         };
     }, [gridData, state.barChartPage]);
 
@@ -1188,7 +1349,7 @@ function EmiReport() {
                                                                         ? "badge bg-danger" 
                                                                         : "badge bg-warning";
 
-  return (
+                                                                    return (
                                                                         <tr key={rowIndex}>
                                                                             <td>{rowIndex + 1}</td>
                                                                             <td><strong>{row.InstallmentNo || '-'}</strong></td>
@@ -1248,6 +1409,123 @@ function EmiReport() {
                     </Col>
                 </Row>
             </Container>
+
+            {/* Modal for Chart Details */}
+            <Modal isOpen={state.modalData.isOpen} toggle={() => setState(prev => ({ ...prev, modalData: { ...prev.modalData, isOpen: false } }))} size="xl">
+                <ModalHeader toggle={() => setState(prev => ({ ...prev, modalData: { ...prev.modalData, isOpen: false } }))}>
+                    <i className="fa fa-info-circle me-2"></i>
+                    {state.modalData.title}
+                </ModalHeader>
+                <ModalBody>
+                    {state.modalData.filteredData && state.modalData.filteredData.length > 0 ? (
+                        <>
+                            <div className="mb-3">
+                                <strong>Total Records: {state.modalData.filteredData.length}</strong>
+                            </div>
+                            <div className="table-responsive" style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                                <Table striped hover bordered size="sm">
+                                    <thead className="table-dark sticky-top">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Installment #</th>
+                                            <th>Customer Name</th>
+                                            <th>Voucher Date</th>
+                                            <th>Due Date</th>
+                                            <th>EMI Amount</th>
+                                            <th>Paid Amount</th>
+                                            <th>Pending Amount</th>
+                                            <th>Status</th>
+                                            <th>Overdue Days</th>
+                                            <th>Mobile No</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {state.modalData.filteredData.map((row, rowIndex) => {
+                                            const emiAmount = parseFloat(row.EMIAmount) || 0;
+                                            const pendingAmount = parseFloat(row.PendingAmount) || 0;
+                                            const paidAmount = emiAmount - pendingAmount;
+                                            const isOverdue = (parseFloat(row.OverdueDays) || 0) > 0;
+                                            const statusClass = row.EMIStatus === "Paid" 
+                                                ? "badge bg-success" 
+                                                : isOverdue 
+                                                ? "badge bg-danger" 
+                                                : "badge bg-warning";
+
+                                            return (
+                                                <tr key={rowIndex}>
+                                                    <td>{rowIndex + 1}</td>
+                                                    <td><strong>{row.InstallmentNo || '-'}</strong></td>
+                                                    <td>{row.CustomerName || '-'}</td>
+                                                    <td>{formatDate(row.VoucherDate)}</td>
+                                                    <td>{formatDate(row.DueDate)}</td>
+                                                    <td className="text-end"><strong>{formatCurrency(emiAmount)}</strong></td>
+                                                    <td className="text-end text-success"><strong>{formatCurrency(paidAmount)}</strong></td>
+                                                    <td className="text-end text-danger"><strong>{formatCurrency(pendingAmount)}</strong></td>
+                                                    <td>
+                                                        <span className={statusClass}>
+                                                            {row.EMIStatus || 'Pending'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="text-center">
+                                                        {isOverdue ? (
+                                                            <span className="badge bg-danger">
+                                                                {row.OverdueDays} days
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-success">-</span>
+                                                        )}
+                                                    </td>
+                                                    <td>{row.MobileNo || '-'}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    <tfoot className="table-secondary">
+                                        <tr>
+                                            <td colSpan="5" className="text-end"><strong>Total:</strong></td>
+                                            <td className="text-end">
+                                                <strong>
+                                                    {formatCurrency(
+                                                        state.modalData.filteredData.reduce((sum, item) => sum + (parseFloat(item.EMIAmount) || 0), 0)
+                                                    )}
+                                                </strong>
+                                            </td>
+                                            <td className="text-end text-success">
+                                                <strong>
+                                                    {formatCurrency(
+                                                        state.modalData.filteredData.reduce((sum, item) => {
+                                                            const emiAmount = parseFloat(item.EMIAmount) || 0;
+                                                            const pendingAmount = parseFloat(item.PendingAmount) || 0;
+                                                            return sum + (emiAmount - pendingAmount);
+                                                        }, 0)
+                                                    )}
+                                                </strong>
+                                            </td>
+                                            <td className="text-end text-danger">
+                                                <strong>
+                                                    {formatCurrency(
+                                                        state.modalData.filteredData.reduce((sum, item) => sum + (parseFloat(item.PendingAmount) || 0), 0)
+                                                    )}
+                                                </strong>
+                                            </td>
+                                            <td colSpan="3"></td>
+                                        </tr>
+                                    </tfoot>
+                                </Table>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="text-center p-4">
+                            <p className="text-muted">No data found for the selected filter.</p>
+                        </div>
+                    )}
+                </ModalBody>
+                <ModalFooter>
+                    <Btn color="secondary" onClick={() => setState(prev => ({ ...prev, modalData: { ...prev.modalData, isOpen: false } }))}>
+                        Close
+                    </Btn>
+                </ModalFooter>
+            </Modal>
         </div>
   )
 }

@@ -31,7 +31,7 @@ const Layout = () => {
       } 
       else {
         dispatch(setToggleSidebar(false))
-        dispatch(setLayout(localStorage.getItem("layout")))
+        dispatch(setLayout(sessionStorage.getItem("layout")))
       }
     }
   }; 

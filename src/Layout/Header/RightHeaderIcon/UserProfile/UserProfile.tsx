@@ -12,7 +12,7 @@ const UserProfile = () => {
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        const authUser = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const authUser = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         
         // Set User Name
         if (authUser.Name) {

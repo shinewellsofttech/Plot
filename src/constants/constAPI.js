@@ -1,6 +1,7 @@
 export const API_WEB_URLS = {
 
   BASE: "https://ApiPlotMadhuban.shinewellsofttech.co.in/api/V1/",
+  // BASE: "http://192.168.31.151:5000/api/V1/",
   // BASE: "https://localhost:44379/api/V1/",
   // BASE_CHAT: "https://apiDemotask.shinewellsofttech.co.in/",
 

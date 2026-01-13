@@ -41,7 +41,7 @@ const AddEdit_CountryMasterContainer = () => {
   });
 
   const handleSubmit = (values) => {
-    const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+    const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
     let vformData = new FormData();
 
     vformData.append("Name", values.Name);

@@ -28,14 +28,14 @@ function* loginUser({ payload: { user, history } }) {
         email: user.email,
         password: user.password,
       });
-      localStorage.setItem("authUser", JSON.stringify(response));
+      sessionStorage.setItem("authUser", JSON.stringify(response));
       yield put(loginSuccess(response));
     } else if (process.env.REACT_APP_DEFAULTAUTH === "fake") {
       const response = yield call(postFakeLogin, {
         email: user.email,
         password: user.password,
       });
-      localStorage.setItem("authUser", JSON.stringify(response));
+      sessionStorage.setItem("authUser", JSON.stringify(response));
       yield put(loginSuccess(response));
     }
     history('/emiReport');
@@ -46,7 +46,7 @@ function* loginUser({ payload: { user, history } }) {
 
 function* logoutUser({ payload: { history } }) {
   try {
-    localStorage.removeItem("authUser");
+    sessionStorage.removeItem("authUser");
 
     if (process.env.REACT_APP_DEFAULTAUTH === "firebase") {
       const response = yield call(fireBaseBackend.logout);
@@ -69,13 +69,13 @@ function* socialLogin({ payload: { type, history } }) {
       } else {
         history("/login");
       }
-      localStorage.setItem("authUser", JSON.stringify(response));
+      sessionStorage.setItem("authUser", JSON.stringify(response));
       yield put(loginSuccess(response));
     } else {
       // Handle non-firebase social login
       response = yield call(postSocialLogin, { type });
       if (response) {
-        localStorage.setItem("authUser", JSON.stringify(response));
+        sessionStorage.setItem("authUser", JSON.stringify(response));
         yield put(loginSuccess(response));
         history("/emiReport");
       } else {

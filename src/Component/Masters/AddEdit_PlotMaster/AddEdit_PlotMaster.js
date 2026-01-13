@@ -27,7 +27,8 @@ const AddEdit_PlotMasterContainer = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    Fn_FillListData(dispatch, setState, "SchemeArray", API_URL_SCHEME + "/TBL.F_CompanyMaster/0");
+    const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+    Fn_FillListData(dispatch, setState, "SchemeArray", API_URL_SCHEME + "/TBL.F_CompanyMaster/"+obj.CompanyId);
 
     const Id = (location.state && location.state.Id) || 0;
 
@@ -55,7 +56,7 @@ const AddEdit_PlotMasterContainer = () => {
   });
 
   const handleSubmit = (values) => {
-    const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+    const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
     let vformData = new FormData();
 
     vformData.append("F_SchemeMaster", values.F_SchemeMaster);

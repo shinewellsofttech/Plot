@@ -161,7 +161,7 @@ export const Fn_AddEditData = (
             response.data.response[0].Id > 0
           ) {
             setState(true)
-            localStorage.setItem(
+            sessionStorage.setItem(
               "YesBank",
               JSON.stringify(response.data.response[0])
             )

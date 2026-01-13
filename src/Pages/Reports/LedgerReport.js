@@ -7,7 +7,13 @@ import CardHeaderCommon from "../../CommonElements/CardHeaderCommon/CardHeaderCo
 import { Fn_GetReport, Fn_FillListData } from '../../store/Functions';
 import { API_WEB_URLS } from '../../constants/constAPI';
 
-function LedgerReport() {
+function LedgerReport({ 
+    initialSchemeId = "", 
+    initialLedgerId = "", 
+    initialFromDate = "", 
+    initialToDate = "",
+    isModalView = false 
+}) {
     const dispatch = useDispatch();
     const [gridData, setGridData] = useState([]);
     
@@ -21,10 +27,10 @@ function LedgerReport() {
         partyOptions: [],
         isProgress: false,
         formData: {
-            F_SchemeMaster: "",
-            F_LedgerMaster: "",
-            FromDate: "",
-            ToDate: "",
+            F_SchemeMaster: initialSchemeId || "",
+            F_LedgerMaster: initialLedgerId || "",
+            FromDate: initialFromDate || "",
+            ToDate: initialToDate || "",
         },
     });
 
@@ -32,7 +38,7 @@ function LedgerReport() {
     const safeArray = arr => Array.isArray(arr) ? arr : [];
 
     useEffect(() => {
-        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         // Load schemes
         Fn_FillListData(
             dispatch,
@@ -41,6 +47,52 @@ function LedgerReport() {
             API_URL_SCHEME + "/TBL.F_CompanyMaster/" + obj.CompanyId
         );
     }, [dispatch]);
+
+    // Separate effect for auto-loading report when initial values are provided
+    useEffect(() => {
+        if (initialSchemeId && initialLedgerId && isModalView) {
+            loadPartyOptionsAndGenerateReport(initialSchemeId, initialLedgerId);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialSchemeId, initialLedgerId, isModalView]);
+
+    const loadPartyOptionsAndGenerateReport = async (schemeId, ledgerId) => {
+        // Load party options for the scheme
+        await Fn_FillListData(
+            dispatch,
+            setState,
+            "partyOptions",
+            API_URL_PARTY + "/TBL.F_SchemeMaster/" + schemeId
+        );
+
+        // Auto-generate report with initial values (without dates)
+        setTimeout(() => {
+            handleGenerateReportWithValues(schemeId, ledgerId);
+        }, 500);
+    };
+
+    const handleGenerateReportWithValues = async (schemeId, ledgerId) => {
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+        
+        setState((prev) => ({ ...prev, isProgress: true }));
+
+        const formData = new FormData();
+        formData.append("F_CompanyMaster", obj.CompanyId || "");
+        formData.append("F_SchemeMaster", schemeId);
+        formData.append("F_LedgerMaster", ledgerId);
+        // FromDate and ToDate are not being sent (empty)
+
+        await Fn_GetReport(
+            dispatch,
+            setGridData,
+            "gridData",
+            API_URL_REPORT,
+            { arguList: { id: 0, formData: formData } },
+            true
+        );
+
+        setState((prev) => ({ ...prev, isProgress: false }));
+    };
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
@@ -95,7 +147,7 @@ function LedgerReport() {
     };
 
     const handleGenerateReport = async () => {
-        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         
         setState((prev) => ({ ...prev, isProgress: true }));
 
@@ -181,6 +233,120 @@ function LedgerReport() {
     };
 
     const totals = calculateTotals();
+
+    // If modal view, don't show breadcrumbs and adjust container
+    if (isModalView) {
+        return (
+            <div style={{ padding: '15px' }}>
+                {state.isProgress ? (
+                    <div className="text-center p-4">
+                        <div className="spinner-border" role="status">
+                            <span className="visually-hidden">Loading...</span>
+                        </div>
+                        <p className="mt-2">Loading report data...</p>
+                    </div>
+                ) : (
+                    <div className="table-responsive" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                        <Table striped hover bordered className="table-hover">
+                            <thead className="table-dark sticky-top">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Scheme Name</th>
+                                    <th>Ledger Name</th>
+                                    <th>Date</th>
+                                    <th>Entry Type</th>
+                                    <th>Ref No</th>
+                                    <th>Remarks</th>
+                                    <th className="text-end">Debit (₹)</th>
+                                    <th className="text-end">Credit (₹)</th>
+                                    <th className="text-end">Running Balance (₹)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {gridData && gridData.length > 0 ? (
+                                    gridData.map((row, rowIndex) => {
+                                        const debit = parseFloat(row.Debit || 0);
+                                        const credit = parseFloat(row.Credit || 0);
+                                        const balance = parseFloat(row.RunningBalance || 0);
+                                        
+                                        const prevRow = rowIndex > 0 ? gridData[rowIndex - 1] : null;
+                                        const showSchemeName = !prevRow || 
+                                            prevRow.SchemeName !== row.SchemeName || 
+                                            prevRow.LedgerName !== row.LedgerName;
+                                        const showLedgerName = showSchemeName;
+                                        
+                                        return (
+                                            <tr key={rowIndex}>
+                                                <td>{rowIndex + 1}</td>
+                                                <td>{showSchemeName ? (row.SchemeName || '-') : ''}</td>
+                                                <td>{showLedgerName ? (row.LedgerName || '-') : ''}</td>
+                                                <td>{formatDate(row.EntryDate)}</td>
+                                                <td>
+                                                    <span className={`badge ${
+                                                        row.EntryType === 'RECEIPT' ? 'bg-success' :
+                                                        row.EntryType === 'VOUCHER' ? 'bg-primary' :
+                                                        row.EntryType === 'DOWN PAYMENT' ? 'bg-info' :
+                                                        'bg-secondary'
+                                                    }`}>
+                                                        {row.EntryType || '-'}
+                                                    </span>
+                                                </td>
+                                                <td>{row.RefNo || '-'}</td>
+                                                <td>{row.Remark || '-'}</td>
+                                                <td className="text-end">
+                                                    {debit > 0 ? (
+                                                        <strong className="text-danger">{formatCurrency(debit)}</strong>
+                                                    ) : (
+                                                        <span className="text-muted">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="text-end">
+                                                    {credit > 0 ? (
+                                                        <strong className="text-success">{formatCurrency(credit)}</strong>
+                                                    ) : (
+                                                        <span className="text-muted">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="text-end">
+                                                    <strong className={balance >= 0 ? 'text-primary' : 'text-danger'}>
+                                                        {formatCurrency(balance)}
+                                                    </strong>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                ) : (
+                                    <tr>
+                                        <td colSpan="10" className="text-center p-4">
+                                            <p className="text-muted">No data found. Please apply filters and generate report.</p>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                            {gridData && gridData.length > 0 && (
+                                <tfoot className="table-secondary">
+                                    <tr>
+                                        <td colSpan="7" className="text-end"><strong>Total:</strong></td>
+                                        <td className="text-end">
+                                            <strong className="text-danger">{formatCurrency(totals.totalDebit)}</strong>
+                                        </td>
+                                        <td className="text-end">
+                                            <strong className="text-success">{formatCurrency(totals.totalCredit)}</strong>
+                                        </td>
+                                        <td className="text-end">
+                                            <strong>
+                                                {gridData.length > 0 ? formatCurrency(gridData[gridData.length - 1].RunningBalance) : '0.00'}
+                                            </strong>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            )}
+                        </Table>
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="page-body">

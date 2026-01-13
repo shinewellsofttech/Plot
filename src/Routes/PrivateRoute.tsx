@@ -1,14 +1,14 @@
 import { Navigate, Outlet } from "react-router-dom";
 
 const PrivateRoute = () => {
-  const storedUser = localStorage.getItem("authUser");
+  const storedUser = sessionStorage.getItem("authUser");
   let isAuthenticated = false;
   if (storedUser) {
     try {
       const parsedUser = JSON.parse(storedUser);
       isAuthenticated = Number(parsedUser?.Id) > 0;
     } catch (error) {
-      console.error("Invalid authUser in localStorage", error);
+      console.error("Invalid authUser in sessionStorage", error);
       isAuthenticated = false;
     }
   }

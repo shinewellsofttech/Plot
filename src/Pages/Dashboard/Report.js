@@ -138,7 +138,7 @@ const Report = () => {
   // Fetch tasks for overdue calculation
   const getTasks = async () => {
     try {
-      const obj = JSON.parse(localStorage.getItem("authUser"));
+      const obj = JSON.parse(sessionStorage.getItem("authUser"));
       const tempState = {};
       const data = await Fn_FillListData(
         dispatch,

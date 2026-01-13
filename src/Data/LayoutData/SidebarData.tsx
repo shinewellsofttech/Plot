@@ -25,42 +25,42 @@ export const MenuList: MenuItem[] = [
       //   bookmark: true 
       // },
       { 
-        id: 5, 
-        title: "Ledger Master", 
-        path: `${process.env.PUBLIC_URL}/ledgerMaster`, 
-        icon: "Book", 
+        id: 6, 
+        title: "Country Master", 
+        path: `${process.env.PUBLIC_URL}/countryMaster`, 
+        icon: "Globe", 
         type: "link", 
         bookmark: true 
       },
-      // { 
-      //   id: 6, 
-      //   title: "Country Master", 
-      //   path: `${process.env.PUBLIC_URL}/countryMaster`, 
-      //   icon: "Globe", 
-      //   type: "link", 
-      //   bookmark: true 
-      // },
-      // { 
-      //   id: 7, 
-      //   title: "State Master", 
-      //   path: `${process.env.PUBLIC_URL}/stateMaster`, 
-      //   icon: "Map", 
-      //   type: "link", 
-      //   bookmark: true 
-      // },
-      // { 
-      //   id: 8, 
-      //   title: "City Master", 
-      //   path: `${process.env.PUBLIC_URL}/cityMaster`, 
-      //   icon: "Map-pin", 
-      //   type: "link", 
-      //   bookmark: true 
-      // },
+      { 
+        id: 7, 
+        title: "State Master", 
+        path: `${process.env.PUBLIC_URL}/stateMaster`, 
+        icon: "Map", 
+        type: "link", 
+        bookmark: true 
+      },
+      { 
+        id: 8, 
+        title: "City Master", 
+        path: `${process.env.PUBLIC_URL}/cityMaster`, 
+        icon: "Map-pin", 
+        type: "link", 
+        bookmark: true 
+      },
       { 
         id: 10, 
         title: "Scheme Master", 
         path: `${process.env.PUBLIC_URL}/schemeMaster`, 
         icon: "Briefcase", 
+        type: "link", 
+        bookmark: true 
+      },
+      { 
+        id: 5, 
+        title: "Ledger Master", 
+        path: `${process.env.PUBLIC_URL}/ledgerMaster`, 
+        icon: "Book", 
         type: "link", 
         bookmark: true 
       },
@@ -89,6 +89,22 @@ export const MenuList: MenuItem[] = [
         title: "Receipt Entry", 
         path: `${process.env.PUBLIC_URL}/receiptEntry`, 
         icon: "Dollar-sign", 
+        type: "link", 
+        bookmark: true 
+      },
+      { 
+        id: 17, 
+        title: "Token Receipt", 
+        path: `${process.env.PUBLIC_URL}/tokenReceipt`, 
+        icon: "Receipt", 
+        type: "link", 
+        bookmark: true 
+      },
+      { 
+        id: 18, 
+        title: "Send SMS", 
+        path: `${process.env.PUBLIC_URL}/sendSms`, 
+        icon: "Message-square", 
         type: "link", 
         bookmark: true 
       }

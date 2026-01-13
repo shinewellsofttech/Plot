@@ -6,11 +6,11 @@ import CommonUL from './CommonUL'
 const Vertical = () => {
   const dispatch= useAppDispatch()
   const handleLayout = (layoutName: string) => {
-    localStorage.setItem("layout",layoutName)
+    sessionStorage.setItem("layout",layoutName)
     dispatch(setLayout(layoutName))
   }
   return (
-    <LI data-attr="normal-sidebar" className={`border-0 ${localStorage.getItem("layout") === "horizontal-wrapper" ? "active" : ""}`} onClick={() => handleLayout("horizontal-wrapper")} >
+    <LI data-attr="normal-sidebar" className={`border-0 ${sessionStorage.getItem("layout") === "horizontal-wrapper" ? "active" : ""}`} onClick={() => handleLayout("horizontal-wrapper")} >
       <div className="header bg-light">
         <CommonUL />
       </div>

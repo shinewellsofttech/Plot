@@ -44,7 +44,7 @@ const AddEdit_SchemeMasterContainer = () => {
 
   const checkDuplicate = async (schemeName) => {
     try {
-      const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+      const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
       const checkUrl = API_WEB_URLS.BASE + API_WEB_URLS.MASTER + "/0/token/SchemeMaster/TBL.F_CompanyMaster/" + obj.CompanyId;
       const response = await API_HELPER.apiGET(checkUrl);
       
@@ -79,7 +79,7 @@ const AddEdit_SchemeMasterContainer = () => {
       }
     }
 
-    const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+    const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
     let vformData = new FormData();
 
     vformData.append("Name", values.Name);

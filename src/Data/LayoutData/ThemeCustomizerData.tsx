@@ -7,12 +7,12 @@ export const navLinkList: CustomizerDataType[] = [
         name: 'Support'
     },
     {
-        path: 'https://docs.pixelstrap.net/react/crocs/document',
+        path: 'https://docs.pixelstrap.net/react/document',
         image: '3.png',
         name: 'Document'
     },
     {
-        path: 'https://landing.pixelstrap.net/react/crocs/template',
+        path: 'https://landing.pixelstrap.net/react/template',
         image: '4.png',
         name: 'Check Features'
     },

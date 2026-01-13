@@ -6,10 +6,11 @@ import { Card, CardBody, Col, Container, Row, Label, Input } from "reactstrap";
 import { Btn } from "../../AbstractElements";
 import Breadcrumbs from "../../CommonElements/Breadcrumbs/Breadcrumbs";
 import CardHeaderCommon from "../../CommonElements/CardHeaderCommon/CardHeaderCommon";
-import PlotPurchaseTable from "./PlotPurchaseTable";
+import TokenReceiptTable from "./TokenReceiptTable";
 import { Fn_AddEditData, Fn_FillListData } from "../../store/Functions";
 import { API_WEB_URLS } from "../../constants/constAPI";
 import { toast } from "react-toastify";
+import { API_HELPER } from "../../helpers/ApiHelper";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
@@ -20,8 +21,8 @@ const TotalCalculation = (plotData, formData, setState) => {
   const totalQty = plotData.reduce((sum, item) => sum + (parseFloat(item.Qty) || 0), 0);
   const totalAmount = plotData.reduce((sum, item) => sum + ((parseFloat(item.Qty) || 0) * (parseFloat(item.ActualPrice) || 0)), 0);
   const downPayment = parseFloat(formData?.DownPayment) || 0;
-  const NetAmt = totalAmount ;
-  const TotalAmt = NetAmt - downPayment;
+  const TotalAmt = totalAmount - downPayment;
+  const NetAmt = totalAmount - downPayment;
   console.log("Total Qty:", totalQty, "Total Amount:", totalAmount, "Total Amt:", TotalAmt, "Net Amt:", NetAmt);
   setState((prev) => ({
     ...prev,
@@ -63,9 +64,18 @@ const EmiCalculation = (plotData, formData, setState) => {
   }));
 };
 
-const PlotPurchase = () => {
+const TokenReceipt = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  // Normalize date string for date inputs without timezone shift
+  const formatDateForInput = (value) => {
+    if (!value) return "";
+    const d = new Date(value);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
   // Dynamic dropdown arrays in state object
   const [state, setState] = useState({
     voucherLOptions: [],
@@ -79,18 +89,19 @@ const PlotPurchase = () => {
     editId: 0,
     isSaving: false,
     isAdding: false,
+    canEdit: true,
     formData: {
       PurchaseRef: "",
+      Party: "",
       VoucherNo: "",
       VoucherDate: new Date().toISOString().split("T")[0],
       F_SchemeMaster: "",
       F_LedgerMaster: "",
       DownPayment: "",
       NoOfInstallment: "",
-      EMIStartDate: "",
-      EMIEndDate: "",
+      AllotmentDate: "",
+      AdvanceAmount: "",
       EMIAmount: "",
-      Penalty: "0",
       TotalQty: "0",
       TotalAmt: "0.00",
       NetAmt: "0.00",
@@ -119,13 +130,13 @@ const PlotPurchase = () => {
     const safeArray = arr => Array.isArray(arr) ? arr : [];
   // API URLs for dropdowns
   const API_URL_SCHEME = API_WEB_URLS.MASTER + "/0/token/SchemeMaster";
-  const API_URL_VOUCHER_NO = API_WEB_URLS.MASTER + "/0/token/NextVoucherNo";
+  const API_URL_VOUCHER_NO = API_WEB_URLS.MASTER + "/0/token/NextVoucherNoNew";
   const API_URL_PARTY = API_WEB_URLS.MASTER + "/0/token/LedgerMaster";
-  const API_URL_PLOT = API_WEB_URLS.MASTER + "/0/token/PlotMasterById";
+  const API_URL_PLOT = API_WEB_URLS.MASTER + "/0/token/PlotMaster";
   const API_URL_PLOT1 = API_WEB_URLS.MASTER + "/0/token/PlotMaster";
-  const API_URL_VOUCHERL = API_WEB_URLS.MASTER + "/0/token/VoucherL";
+  const API_URL_VOUCHERL = API_WEB_URLS.MASTER + "/0/token/VoucherLNew";
   // If you have a PurchaseRef master, set its API here
-  const API_URL_PURCHASE_REF = API_WEB_URLS.MASTER + "/0/token/VoucherH";
+  const API_URL_PURCHASE_REF = API_WEB_URLS.MASTER + "/0/token/VoucherHNew";
 
   useEffect(() => {
     const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
@@ -160,11 +171,6 @@ const PlotPurchase = () => {
 
   // ...existing code...
 
-  // Handler for EMI date changes
-  const handleEMIDateChange = (field, value) => {
-    handleFormChange(field, value);
-  };
-
   // Unified handler for all form inputs
   const handleFormChange = async (field, value) => {
     setState((prev) => {
@@ -192,7 +198,7 @@ const PlotPurchase = () => {
         dispatch,
         setState,
         "plotOptions",
-        API_URL_PLOT + "/Id/" + value
+        API_URL_PLOT1 + "/TBL.F_SchemeMaster/" + value
       );
     }
     if (field === "PurchaseRef" && value) {
@@ -207,32 +213,17 @@ const PlotPurchase = () => {
           dispatch,
           setState,
           "voucherLOptions",
-          API_URL_VOUCHERL + "/TBL.F_VoucherH/" + value
+          API_URL_VOUCHERL + "/TBL.F_VoucherHNew/" + value
         );
-
-        // Helper function to format date without timezone issues
-        const formatDateLocal = (dateStr) => {
-          if (!dateStr) return "";
-          const date = new Date(dateStr);
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        };
 
         // Format VoucherDate if it exists
         const voucherDate = selectedPurchaseRef.VoucherDate
-          ? formatDateLocal(selectedPurchaseRef.VoucherDate)
-          : formatDateLocal(new Date());
+          ? formatDateForInput(selectedPurchaseRef.VoucherDate)
+          : formatDateForInput(new Date());
 
-        // Format EMIStartDate if it exists
-        const emiStartDate = selectedPurchaseRef.EMIStartDate
-          ? formatDateLocal(selectedPurchaseRef.EMIStartDate)
-          : "";
-
-        // Format EMIEndDate if it exists
-        const emiEndDate = selectedPurchaseRef.EMIEndDate
-          ? formatDateLocal(selectedPurchaseRef.EMIEndDate)
+        // Format AllotmentDate if it exists
+        const allotmentDate = selectedPurchaseRef.AllotmentDate
+          ? formatDateForInput(selectedPurchaseRef.AllotmentDate)
           : "";
 
         // Map VoucherL data to plotData format
@@ -263,12 +254,12 @@ const PlotPurchase = () => {
           VoucherDate: voucherDate,
           F_SchemeMaster: selectedPurchaseRef.F_SchemeMaster?.toString() || "",
           F_LedgerMaster: selectedPurchaseRef.F_LedgerMaster?.toString() || "",
+          Party: selectedPurchaseRef.Party || selectedPurchaseRef.LedgerName || "",
           DownPayment: selectedPurchaseRef.DownPayment?.toString() || "",
           NoOfInstallment: selectedPurchaseRef.NoOfInstallment?.toString() || "",
-          EMIStartDate: emiStartDate,
-          EMIEndDate: emiEndDate,
+          AllotmentDate: allotmentDate,
+          AdvanceAmount: selectedPurchaseRef.AdvanceAmount?.toString() || "",
           EMIAmount: selectedPurchaseRef.EMIAmount?.toString() || "",
-          Penalty: selectedPurchaseRef.Penalty?.toString() || "0",
           VoucherNo: selectedPurchaseRef.VoucherNo?.toString() || "",
           TotalQty: selectedPurchaseRef.TotalQty?.toString() || "",
           TotalAmt: selectedPurchaseRef.TotalAmt?.toString() || "",
@@ -291,6 +282,11 @@ const PlotPurchase = () => {
           );
         }
 
+        // Check if TotalAmt and NetAmt are same to determine if editing is allowed
+        const totalAmt = parseFloat(newFormData.TotalAmt) || 0;
+        const netAmt = parseFloat(newFormData.NetAmt) || 0;
+        const canEdit = totalAmt === netAmt;
+        
         // Update state with new form data and plot data after options are loaded
         // Don't set editMode to true here - only load the data
         setState((prev) => ({
@@ -299,6 +295,7 @@ const PlotPurchase = () => {
           plotData: mappedPlotData,
           editMode: false, // Keep editMode false when selecting from dropdown
           editId: parseInt(value), // Store the ID for later use when Edit is clicked
+          canEdit: canEdit, // Set whether editing is allowed based on amount match
         }));
 
         // Calculate totals and EMI with new data
@@ -316,10 +313,9 @@ const PlotPurchase = () => {
           F_LedgerMaster: "",
           DownPayment: "",
           NoOfInstallment: "",
-          EMIStartDate: "",
-          EMIEndDate: "",
+          AllotmentDate: "",
+          AdvanceAmount: "",
           EMIAmount: "",
-          Penalty: "0",
         },
         plotData: [
           {
@@ -420,8 +416,8 @@ const PlotPurchase = () => {
         F_LedgerMaster: "",
         DownPayment: "",
         NoOfInstallment: "",
-        EMIStartDate: "",
-        EMIEndDate: "",
+          AllotmentDate: "",
+          AdvanceAmount: "",
         EMIAmount: "",
         Penalty: "0",
         TotalQty: "0",
@@ -440,6 +436,7 @@ const PlotPurchase = () => {
       ],
       editMode: false,
       editId: 0,
+      canEdit: true,
       voucherLOptions: [],
     }));
     
@@ -458,6 +455,11 @@ const PlotPurchase = () => {
   const handleEdit = () => {
     // Enable edit mode when Edit button is clicked
     if (state.formData.PurchaseRef && state.editId > 0) {
+      // Check if TotalAmt and NetAmt match
+      if (!state.canEdit) {
+        toast.error("Total Amount and Net Amount do not match! You have created receipt against it so can not edit.");
+        return;
+      }
       setState((prev) => ({
         ...prev,
         editMode: true,
@@ -480,7 +482,7 @@ const PlotPurchase = () => {
       return;
     }
 
-    if (!state.formData.F_LedgerMaster || state.formData.F_LedgerMaster === "") {
+    if (!state.formData.Party || state.formData.Party === "") {
       toast.error("Party is required");
       return;
     }
@@ -495,19 +497,19 @@ const PlotPurchase = () => {
       return;
     }
 
-    if (!state.formData.EMIStartDate || !state.formData.EMIStartDate.trim()) {
-      toast.error("EMI Start Date is required");
+    if (!state.formData.AllotmentDate || !state.formData.AllotmentDate.trim()) {
+      toast.error("Allotment Date is required");
       return;
     }
 
-    if (!state.formData.EMIEndDate || !state.formData.EMIEndDate.trim()) {
-      toast.error("EMI End Date is required");
+    if (state.formData.AdvanceAmount === "" || state.formData.AdvanceAmount === null) {
+      toast.error("Advance Amount is required");
       return;
     }
 
-    // Validate that EMI End Date is after EMI Start Date
-    if (new Date(state.formData.EMIEndDate) < new Date(state.formData.EMIStartDate)) {
-      toast.error("EMI End Date must be after EMI Start Date");
+    const advanceAmount = parseFloat(state.formData.AdvanceAmount);
+    if (isNaN(advanceAmount) || advanceAmount < 0) {
+      toast.error("Advance Amount must be 0 or greater");
       return;
     }
 
@@ -552,43 +554,20 @@ const PlotPurchase = () => {
     }
 
     setState((prev) => ({ ...prev, isSaving: true }));
-    // 🔹 Get comma separated Plot Names from plotData
-const plotNames = state.plotData
-.map(plot => {
-  const plotObj = state.plotOptions.find(
-    opt => opt.Id === parseInt(plot.F_PlotMaster)
-  );
-  return plotObj?.Name || "";
-})
-.filter(name => name !== "")
-.join(", ");
-
-
-    const partyData = state.partyOptions.find(opt => opt.Id === parseInt(state.formData.F_LedgerMaster));
-    const partyName = partyData?.Name || '';
-    const MobileNo = partyData?.MobileNo || partyData?.PhoneNo || '';
-    const schemeData = state.schemeOptions.find(opt => opt.Id === parseInt(state.formData.F_SchemeMaster));
-    const schemeName = schemeData?.Name || '';
     
     try {
       const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
       const formData = new FormData();
-      formData.append("Party", partyName || "");
-      formData.append("Scheme", schemeName || "");
-      formData.append("MobileNo", MobileNo || "");
-      formData.append("PlotNames", plotNames || "");
       formData.append("F_CompanyMaster", obj.CompanyId || "");
       formData.append("VoucherNo", state.formData.VoucherNo || "");
       formData.append("VoucherDate", state.formData.VoucherDate || "");
       formData.append("F_SchemeMaster", state.formData.F_SchemeMaster || "");
-      formData.append("F_LedgerMaster", state.formData.F_LedgerMaster || "");
+      formData.append("Party", state.formData.Party || "");
       formData.append("DownPayment", state.formData.DownPayment || "");
       formData.append("NoOfInstallment", state.formData.NoOfInstallment || "");
-      formData.append("EMIStartDate", state.formData.EMIStartDate || "");
-      formData.append("EMIEndDate", state.formData.EMIEndDate || "");
-      formData.append("EMIAmount", state.formData.EMIAmount || "");
-      formData.append("Penalty", state.formData.Penalty || "0");
-      
+      formData.append("AllotmentDate", state.formData.AllotmentDate || "");
+      formData.append("AdvanceAmount", state.formData.AdvanceAmount || "");
+      formData.append("EMIAmount", state.formData.EMIAmount || ""); 
       // Append totals from formData
       formData.append("TotalQty", state.formData.TotalQty || "0");
       formData.append("TotalAmt", state.formData.TotalAmt || "0.00");
@@ -599,7 +578,7 @@ const plotNames = state.plotData
       
       const res = await Fn_AddEditData(dispatch, setState, 
         { arguList: { id: recordId, formData: formData } }, 
-        'VoucherH/0/token', true, "memberid", navigate, "#");
+        'VoucherHNew/0/token', true, "memberid", navigate, "#");
       
       if(res && res.data && res.data.data && res.data.data.id > 0){
         const voucherHId = res.data.data.id;
@@ -609,14 +588,11 @@ const plotNames = state.plotData
         
         const res2 = await Fn_AddEditData(dispatch, setState, 
           { arguList: { id: 0, formData: plotData } }, 
-          'VoucherL/0/token', true, "memberid", navigate, "#");
+          'VoucherLNew/0/token', true, "memberid", navigate, "#");
         
         // Reload purchaseRefOptions to get the newly saved record
         const obj2 = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         await Fn_FillListData(dispatch, setState, "purchaseRefOptions", API_URL_PURCHASE_REF + "/TBL.F_CompanyMaster/" + obj2.CompanyId);
-        
-
- 
         
         // Show success message
         toast.success("Record saved successfully!", {
@@ -667,7 +643,7 @@ const plotNames = state.plotData
   };
 
   // Helper function to get print content HTML
-  const getPrintContent = () => {
+  const getPrintContent = async () => {
     // Helper function to get name from options
     const getNameFromOptions = (id, options) => {
       if (!id || !options) return '';
@@ -675,17 +651,22 @@ const plotNames = state.plotData
       return option ? option.Name : '';
     };
 
-    // Get names for display
-    const schemeName = getNameFromOptions(state.formData.F_SchemeMaster, state.schemeOptions);
-    const partyName = getNameFromOptions(state.formData.F_LedgerMaster, state.partyOptions);
-    const purchaseRefName = state.purchaseRefOptions.find(opt => opt.Id === parseInt(state.formData.PurchaseRef));
-    const purchaseRefDisplay = purchaseRefName ? `${purchaseRefName.LedgerName} (${purchaseRefName.SchemeName})` : '';
+    // Get customer details - try from partyOptions first, then fetch full record if needed
 
-    // Format date
+    const customerName = state.formData.Party  || '';
+
+    
+    // Get all plot details - map through all plots
+    const allPlots = state.plotData && state.plotData.length > 0 ? state.plotData : [];
+    
+    // Format date in DD.MM.YYYY format
     const formatDate = (dateStr) => {
       if (!dateStr) return '';
       const date = new Date(dateStr);
-      return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}.${month}.${year}`;
     };
 
     // Get company details from sessionStorage
@@ -695,126 +676,134 @@ const plotNames = state.plotData
     const companyContactNo = obj.CompanyContactNo || '';
     const companyEmail = obj.CompanyEmail || '';
     const companyRegNo = obj.CompanyRegNo || '';
+    
+    // Calculate advance amount (if down payment has multiple parts, show breakdown)
+    const downPayment = parseFloat(state.formData.DownPayment) || 0;
+    const advanceAmount = parseFloat(state.formData.AdvanceAmount) || downPayment;
+    const emiAmount = parseFloat(state.formData.EMIAmount) || 0;
 
-    // Calculate totals
-    const totalQty = state.formData.TotalQty || 0;
-    const totalDueAmount = parseFloat(state.formData.TotalAmt) || 0;
-    const netAmount = parseFloat(state.formData.NetAmt) || 0;
-
-    // Generate HTML content
+    // Generate HTML content matching the image format
     return `
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Plot Purchase - Print</title>
+          <title>Token Receipt - Print</title>
           <style>
             @media print {
               body { margin: 0; padding: 0; }
               .no-print { display: none !important; }
-              @page { size: A5; margin: 10mm; }
+              @page { size: A5; margin: 10mm 15mm; }
             }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
               font-family: Arial, sans-serif;
               font-size: 12px;
-              padding: 15px;
+              padding: 8px 15px;
               max-width: 100%;
               margin: 0 auto;
               background: #fff;
+              line-height: 1.3;
             }
             .print-header {
-              display: flex;
-              gap: 20px;
-              margin-bottom: 12px;
-              border-bottom: 2px solid #000;
-              padding-bottom: 8px;
-            }
-            .company-column {
-              flex: 1;
+              text-align: center;
+              margin-bottom: 6px;
+              border-bottom: 1px solid #000;
+              padding-bottom: 4px;
             }
             .company-name {
               font-size: 18px;
               font-weight: bold;
-              margin-bottom: 5px;
+              margin-bottom: 2px;
+              text-transform: uppercase;
+              color: #d32f2f;
             }
             .company-details {
-              font-size: 10px;
-              line-height: 1.5;
-              color: #333;
-              margin-bottom: 3px;
-            }
-            .document-title {
-              font-size: 16px;
-              font-weight: bold;
-              text-align: center;
-              margin: 10px 0;
-              text-transform: uppercase;
-            }
-            .info-section {
-              margin-bottom: 12px;
-              display: flex;
-              gap: 20px;
-            }
-            .info-column {
-              flex: 1;
-            }
-            .info-row {
-              display: flex;
-              margin-bottom: 4px;
               font-size: 11px;
+              line-height: 1.3;
+              color: #333;
+              margin-bottom: 2px;
             }
-            .info-label {
+            .receipt-date {
+              text-align: right;
+              margin-bottom: 5px;
+              font-size: 12px;
+            }
+            .customer-section {
+              margin-bottom: 6px;
+              border: 1px solid #000;
+              padding: 4px 6px;
+            }
+            .customer-row {
+              display: flex;
+              margin-bottom: 2px;
+              font-size: 12px;
+            }
+            .customer-label {
               font-weight: bold;
-              width: 110px;
+              width: 80px;
               flex-shrink: 0;
             }
-            .info-value {
+            .customer-value {
               flex: 1;
+              border-bottom: 1px dotted #000;
+              min-height: 14px;
+            }
+            .plot-details-section {
+              margin-bottom: 6px;
+            }
+            .plot-details-title {
+              font-weight: bold;
+              font-size: 14px;
+              margin-bottom: 4px;
+              text-align: center;
+              text-decoration: underline;
             }
             table {
               width: 100%;
               border-collapse: collapse;
-              margin: 12px 0;
-              font-size: 10px;
+              margin: 5px 0;
+              font-size: 11px;
             }
             table th {
               background-color: #f0f0f0;
               border: 1px solid #000;
-              padding: 6px 4px;
+              padding: 4px 4px;
               text-align: left;
               font-weight: bold;
             }
             table td {
               border: 1px solid #000;
-              padding: 5px 4px;
+              padding: 3px 4px;
             }
-            .totals-section {
-              margin-top: 12px;
-              text-align: right;
+            .documents-section {
+              margin-bottom: 6px;
+              border: 1px solid #000;
+              padding: 4px 6px;
             }
-            .total-row {
-              margin-bottom: 4px;
-              font-size: 11px;
-            }
-            .total-label {
-              display: inline-block;
-              width: 130px;
-              text-align: right;
+            .documents-title {
               font-weight: bold;
-              margin-right: 10px;
+              font-size: 12px;
+              margin-bottom: 3px;
             }
-            .total-value {
-              display: inline-block;
-              width: 90px;
+            .documents-list {
+              font-size: 11px;
+              line-height: 1.4;
+              padding-left: 15px;
+            }
+            .signature-section {
+              margin-top: 10px;
               text-align: right;
             }
-            .footer {
-              margin-top: 15px;
-              padding-top: 8px;
+            .signature-line {
               border-top: 1px solid #000;
-              font-size: 9px;
+              width: 120px;
+              margin: 15px auto 2px;
+              display: block;
+            }
+            .signature-label {
+              font-size: 11px;
               text-align: center;
-              color: #666;
+              margin-top: 2px;
             }
             .print-button {
               position: fixed;
@@ -840,121 +829,102 @@ const plotNames = state.plotData
           <button class="print-button no-print" onclick="window.print()">🖨️ Print</button>
           
           <div class="print-header">
-            <div class="company-column">
-              <div class="company-name">${companyName}</div>
-              ${companyAddress ? `<div class="company-details">${companyAddress}</div>` : ''}
-              ${companyRegNo ? `<div class="company-details">Reg. No: ${companyRegNo}</div>` : ''}
-            </div>
-            <div class="company-column">
-              ${companyContactNo ? `<div class="company-details">Ph: ${companyContactNo}</div>` : ''}
-              ${companyEmail ? `<div class="company-details">Email: ${companyEmail}</div>` : ''}
+            <div class="company-name">${companyName}</div>
+            ${companyRegNo ? `<div class="company-details">Reg.No. ${companyRegNo}</div>` : ''}
+            ${companyAddress ? `<div class="company-details">Office:- ${companyAddress}</div>` : ''}
+            ${companyContactNo ? `<div class="company-details">Mob:-${companyContactNo} ${companyEmail ? `(Off) ${companyEmail}` : ''}</div>` : ''}
+          </div>
+
+          <div class="receipt-date">
+            <strong>Date:</strong> ${formatDate(state.formData.VoucherDate)}
+          </div>
+
+          <div class="customer-section">
+            <div class="customer-row">
+              <span class="customer-label">Name:</span>
+              <span class="customer-value">${customerName || ''}</span>
             </div>
           </div>
 
-          <div class="document-title">Plot Purchase</div>
-
-          <div class="info-section">
-            <div class="info-column">
-              <div class="info-row">
-                <span class="info-label">Voucher No:</span>
-                <span class="info-value">${state.formData.VoucherNo || '-'}</span>
+          <div class="plot-details-section">
+            <div class="plot-details-title">*Plot Details*</div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 28%;">Plot Name</th>
+                  <th style="width: 10%;">Size</th>
+                  <th style="width: 15%;">Tent. Price</th>
+                  <th style="width: 8%;">Qty</th>
+                  <th style="width: 15%;">Actual Price</th>
+                  <th style="width: 18%;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${allPlots.map((plot) => {
+                  const plotName = plot.F_PlotMaster ? getNameFromOptions(plot.F_PlotMaster, state.plotOptions) : '';
+                  const plotSize = plot.PlotSize || '0';
+                  const tentativePrice = parseFloat(plot.TentativePrice) || 0;
+                  const plotQty = parseFloat(plot.Qty) || 0;
+                  const plotActualPrice = parseFloat(plot.ActualPrice) || 0;
+                  const plotTotal = plotQty * plotActualPrice;
+                  
+                  return `
+                    <tr>
+                      <td>${plotName || '-'}</td>
+                      <td>${plotSize}</td>
+                      <td>₹${tentativePrice.toFixed(2)}</td>
+                      <td>${plotQty}</td>
+                      <td>₹${plotActualPrice.toFixed(2)}</td>
+                      <td>₹${plotTotal.toFixed(2)}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+            <div style="margin-top: 8px; font-size: 12px;">
+              <div style="display: flex; margin-bottom: 3px;">
+                <span style="font-weight: bold; width: 120px;">Down Payment:</span>
+                <span>₹${downPayment.toFixed(2)}</span>
               </div>
-              <div class="info-row">
-                <span class="info-label">Date:</span>
-                <span class="info-value">${formatDate(state.formData.VoucherDate)}</span>
+              <div style="display: flex; margin-bottom: 3px;">
+                <span style="font-weight: bold; width: 120px;">EMI Amount:</span>
+                <span>₹${emiAmount.toFixed(2)}/-</span>
               </div>
-              <div class="info-row">
-                <span class="info-label">Scheme:</span>
-                <span class="info-value">${schemeName || '-'}</span>
+              <div style="display: flex; margin-bottom: 3px;">
+                <span style="font-weight: bold; width: 120px;">Advance Amount:</span>
+                <span>₹${advanceAmount.toFixed(2)}/-</span>
               </div>
-              <div class="info-row">
-                <span class="info-label">Party:</span>
-                <span class="info-value">${partyName || '-'}</span>
+              <div style="display: flex; margin-bottom: 3px;">
+                <span style="font-weight: bold; width: 120px;">Date of Allotment:</span>
+                <span>${state.formData.AllotmentDate ? formatDate(state.formData.AllotmentDate) : ''}</span>
               </div>
-              <div class="info-row">
-                <span class="info-label">Down Payment:</span>
-                <span class="info-value">₹${state.formData.DownPayment ? parseFloat(state.formData.DownPayment).toFixed(2) : '0.00'}</span>
-              </div>
-            </div>
-            <div class="info-column">
-              <div class="info-row">
-                <span class="info-label">No. of Installment:</span>
-                <span class="info-value">${state.formData.NoOfInstallment || '-'}</span>
-              </div>
-              ${state.formData.EMIAmount ? `
-              <div class="info-row">
-                <span class="info-label">EMI Amount:</span>
-                <span class="info-value">₹${parseFloat(state.formData.EMIAmount).toFixed(2)}</span>
-              </div>
-              ` : ''}
-              ${state.formData.Penalty ? `
-              <div class="info-row">
-                <span class="info-label">Penalty:</span>
-                <span class="info-value">₹${parseFloat(state.formData.Penalty).toFixed(2)}</span>
-              </div>
-              ` : ''}
-            </div>
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 30%;">Plot Name</th>
-                <th style="width: 12%;">Size</th>
-                <th style="width: 15%;">Tent. Price</th>
-                <th style="width: 8%;">Qty</th>
-                <th style="width: 15%;">Actual Price</th>
-                <th style="width: 20%;">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${state.plotData.map((item) => {
-                const plotName = getNameFromOptions(item.F_PlotMaster, state.plotOptions);
-                const plotSize = item.PlotSize || '0';
-                const tentativePrice = parseFloat(item.TentativePrice) || 0;
-                const qty = parseFloat(item.Qty) || 0;
-                const actualPrice = parseFloat(item.ActualPrice) || 0;
-                const totalAmount = qty * actualPrice;
-                return `
-                  <tr>
-                    <td>${plotName || '-'}</td>
-                    <td>${plotSize}</td>
-                    <td>₹${tentativePrice.toFixed(2)}</td>
-                    <td>${qty}</td>
-                    <td>₹${actualPrice.toFixed(2)}</td>
-                    <td>₹${totalAmount.toFixed(2)}</td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-
-          <div class="totals-section">
-            <div class="total-row">
-              <span class="total-label">Total Qty:</span>
-              <span class="total-value">${totalQty}</span>
-            </div>
-            <div class="total-row">
-              <span class="total-label">Total Due Amount:</span>
-              <span class="total-value">₹${totalDueAmount.toFixed(2)}</span>
-            </div>
-            <div class="total-row">
-              <span class="total-label">Net Amount:</span>
-              <span class="total-value">₹${netAmount.toFixed(2)}</span>
             </div>
           </div>
 
-          <div class="footer">
-            Generated on: ${new Date().toLocaleString('en-IN')}
+          <div class="documents-section">
+            <div class="documents-title">Documents Required for Allotment:</div>
+            <div class="documents-list">
+              <div>1. Aadhar Card Copy</div>
+              <div>2. PAN Card Copy</div>
+              <div>3. 3 Passport Size Photos</div>
+              <div>4. Nominee: Aadhar Card Copy, PAN Card Copy</div>
+            </div>
+          </div>
+
+          <div class="signature-section">
+            <div class="signature-line"></div>
+            <div class="signature-label">CASHIER</div>
+            <div class="signature-label">${companyName} BRANCH-BANSWARA</div>
+            <div class="signature-label" style="margin-top: 3px;">Signature</div>
           </div>
         </body>
         </html>
       `;
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     try {
-      const printContent = getPrintContent();
+      const printContent = await getPrintContent();
       // Open new window with print content
       const printWindow = window.open('', '_blank', 'width=600,height=800');
       if (printWindow) {
@@ -974,7 +944,7 @@ const plotNames = state.plotData
 
   const handleDownloadPDF = async () => {
     try {
-      const printContent = getPrintContent();
+      const printContent = await getPrintContent();
       const printWindow = window.open('', '_blank', 'width=600,height=800');
       if (printWindow) {
         printWindow.document.write(printContent);
@@ -997,7 +967,7 @@ const plotNames = state.plotData
     try {
       toast.info("Generating PDF...");
       
-      const printContent = getPrintContent();
+      const printContent = await getPrintContent();
       
       // Create a temporary container for PDF generation
       const tempDiv = document.createElement('div');
@@ -1043,7 +1013,7 @@ const plotNames = state.plotData
       // Generate PDF blob
       const pdfBlob = pdf.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
-      const fileName = `PlotPurchase_${state.formData.VoucherNo || 'Purchase'}_${new Date().getTime()}.pdf`;
+      const fileName = `TokenReceipt_${state.formData.VoucherNo || 'Receipt'}_${new Date().getTime()}.pdf`;
       
       // Create message
       const getNameFromOptions = (id, options) => {
@@ -1051,32 +1021,59 @@ const plotNames = state.plotData
         const option = options.find(opt => opt.Id === parseInt(id));
         return option ? option.Name : '';
       };
-      const schemeName = getNameFromOptions(state.formData.F_SchemeMaster, state.schemeOptions);
-      const partyName = getNameFromOptions(state.formData.F_LedgerMaster, state.partyOptions);
+      
+   
+      
+      const customerName = state.formData.Party || '';
+      const allPlots = state.plotData && state.plotData.length > 0 ? state.plotData : [];
+      const downPayment = parseFloat(state.formData.DownPayment) || 0;
+      const advanceAmount = parseFloat(state.formData.AdvanceAmount) || downPayment;
+      const emiAmount = parseFloat(state.formData.EMIAmount) || 0;
+      
       const formatDate = (dateStr) => {
         if (!dateStr) return '';
         const date = new Date(dateStr);
-        return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}.${month}.${year}`;
       };
       
-      let message = `*Plot Purchase Receipt*\n\n`;
-      message += `*Voucher No:* ${state.formData.VoucherNo || 'N/A'}\n`;
+      let message = `*Token Receipt*\n\n`;
       message += `*Date:* ${formatDate(state.formData.VoucherDate)}\n`;
-      message += `*Scheme:* ${schemeName || 'N/A'}\n`;
-      message += `*Party:* ${partyName || 'N/A'}\n`;
-      message += `*Down Payment:* ₹${state.formData.DownPayment ? parseFloat(state.formData.DownPayment).toFixed(2) : '0.00'}\n`;
-      message += `*No. of Installments:* ${state.formData.NoOfInstallment || 'N/A'}\n`;
-      message += `*EMI Amount:* ₹${state.formData.EMIAmount ? parseFloat(state.formData.EMIAmount).toFixed(2) : '0.00'}\n`;
-      message += `*Total Qty:* ${state.formData.TotalQty || 0}\n`;
-      message += `*Total Due Amount:* ₹${parseFloat(state.formData.TotalAmt || 0).toFixed(2)}\n`;
-      message += `*Net Amount:* ₹${parseFloat(state.formData.NetAmt || 0).toFixed(2)}\n`;
+      message += `*Customer:* ${customerName}\n\n`;
+      
+      // Add all plots
+      if (allPlots.length > 0) {
+        message += `*Plot Details:*\n`;
+        allPlots.forEach((plot, index) => {
+          const plotName = plot.F_PlotMaster ? getNameFromOptions(plot.F_PlotMaster, state.plotOptions) : 'N/A';
+          const plotSize = plot.PlotSize || '0';
+          const plotQty = plot.Qty || '0';
+          const plotActualPrice = parseFloat(plot.ActualPrice) || 0;
+          const plotTotal = plotActualPrice * parseFloat(plotQty);
+          
+          message += `\n*Plot ${index + 1}:*\n`;
+          message += `  Plot No: ${plotName}\n`;
+          message += `  Plot Size: ${plotSize} Sqft\n`;
+          message += `  Quantity: ${plotQty}\n`;
+          message += `  Actual Price: ₹${plotActualPrice.toFixed(2)}\n`;
+          message += `  Total: ₹${plotTotal.toFixed(2)}\n`;
+        });
+      }
+      
+      message += `\n*Payment Details:*\n`;
+      message += `  Down Payment: ₹${downPayment.toFixed(2)}\n`;
+      message += `  Advance Amount: ₹${advanceAmount.toFixed(2)}\n`;
+      message += `  EMI Amount: ₹${emiAmount.toFixed(2)}\n`;
+      message += `  Allotment Date: ${state.formData.AllotmentDate ? formatDate(state.formData.AllotmentDate) : 'N/A'}\n`;
       message += `\n📎 PDF file is being downloaded. Please attach it to this message.`;
       
       // Try Web Share API first (for mobile devices)
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([pdfBlob], fileName, { type: 'application/pdf' })] })) {
         try {
           await navigator.share({
-            title: `Plot Purchase - Voucher ${state.formData.VoucherNo}`,
+            title: `Token Receipt - ${state.formData.VoucherNo}`,
             text: message,
             files: [new File([pdfBlob], fileName, { type: 'application/pdf' })]
           });
@@ -1132,10 +1129,9 @@ const plotNames = state.plotData
           F_LedgerMaster: "",
           DownPayment: "",
           NoOfInstallment: "",
-          EMIStartDate: "",
-          EMIEndDate: "",
+          AllotmentDate: "",
+          AdvanceAmount: "",
           EMIAmount: "",
-          Penalty: "0",
           TotalQty: "0",
           TotalAmt: "0.00",
           NetAmt: "0.00",
@@ -1152,6 +1148,7 @@ const plotNames = state.plotData
         ],
         editMode: false,
         editId: 0,
+        canEdit: true,
         voucherLOptions: [],
       }));
       
@@ -1190,8 +1187,8 @@ const plotNames = state.plotData
             F_LedgerMaster: "",
             DownPayment: "",
             NoOfInstallment: "",
-            EMIStartDate: "",
-            EMIEndDate: "",
+            AllotmentDate: "",
+            AdvanceAmount: "",
             EMIAmount: "",
             Penalty: "0",
             TotalQty: "0",
@@ -1210,6 +1207,7 @@ const plotNames = state.plotData
           ],
           editMode: false,
           editId: 0,
+          canEdit: true,
           voucherLOptions: [],
         }));
       }else{
@@ -1250,7 +1248,7 @@ const plotNames = state.plotData
         <Row>
           <Col xs="12">
             <Card>
-              <CardHeaderCommon title="Purchase" tagClass="card-title mb-0" />
+              <CardHeaderCommon title="Token Receipt" tagClass="card-title mb-0" />
               <CardBody>
                 {/* First Row */}
                 <Row className="mb-3">
@@ -1270,7 +1268,7 @@ const plotNames = state.plotData
                       <option value="">Purchase Ref..</option>
                       {safeArray(state.purchaseRefOptions).map((option) => (
                         <option key={option.Id} value={option.Id}>
-                          {option.LedgerName} ({option.SchemeName})
+                          {option.Party || option.LedgerName || 'N/A'} ({option.SchemeName})
                         </option>
                       ))}
                     </select>
@@ -1313,20 +1311,14 @@ const plotNames = state.plotData
                   </Col>
                   <Col md="3">
                     <Label className="form-label">Party</Label>
-                    <select
-                      className="form-select"
-                      value={state.formData.F_LedgerMaster}
-                      onChange={(e) => handleFormChange("F_LedgerMaster", e.target.value)}
-                      onKeyDown={handleKeyDown}
+                    <Input
+                      type="text"
+                      value={state.formData.Party}
+                      onChange={(e) =>
+                        handleFormChange("Party", e.target.value)
+                      }
                       disabled={state.editId > 0 && !state.editMode}
-                    >
-                      <option value="">Select Party</option>
-                      {safeArray(state.partyOptions).map((option) => (
-                        <option key={option.Id} value={option.Id}>
-                          {option.Name}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </Col>
                 </Row>
 
@@ -1355,21 +1347,21 @@ const plotNames = state.plotData
                     />
                   </Col>
                   <Col md="2">
-                    <Label className="form-label">EMI Start Date</Label>
+                    <Label className="form-label">Allotment Date</Label>
                     <Input
                       type="date"
-                      value={state.formData.EMIStartDate}
-                      onChange={(e) => handleEMIDateChange("EMIStartDate", e.target.value)}
+                      value={state.formData.AllotmentDate}
+                      onChange={(e) => handleFormChange("AllotmentDate", e.target.value)}
                       onKeyDown={handleKeyDown}
                       disabled={state.editId > 0 && !state.editMode}
                     />
                   </Col>
                   <Col md="2">
-                    <Label className="form-label">EMI End Date</Label>
+                    <Label className="form-label">Advance Amount</Label>
                     <Input
-                      type="date"
-                      value={state.formData.EMIEndDate}
-                      onChange={(e) => handleEMIDateChange("EMIEndDate", e.target.value)}
+                      type="number"
+                      value={state.formData.AdvanceAmount}
+                      onChange={(e) => handleFormChange("AdvanceAmount", e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault();
@@ -1393,21 +1385,10 @@ const plotNames = state.plotData
                       disabled
                     />
                   </Col>
-                  <Col md="2">
-                    <Label className="form-label">Penalty</Label>
-                    <Input
-                      type="number"
-                      value={state.formData.Penalty}
-                      onChange={(e) => handleFormChange("Penalty", e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder="0"
-                      disabled={state.editId > 0 && !state.editMode}
-                    />
-                  </Col>
                 </Row>
 
                 {/* Plot Table */}
-                <PlotPurchaseTable
+                <TokenReceiptTable
                   plotData={state.plotData}
                   plotOptions={state.plotOptions}
                   onRemove={handleRemovePlot}
@@ -1420,9 +1401,16 @@ const plotNames = state.plotData
                   addButtonRefs={addButtonRefs}
                 />
 
-                {/* Totals Table Section (same design as PlotPurchaseTable) */}
+                {/* Totals Table Section (same design as TokenReceiptTable) */}
                 <div className="row mt-3">
-                  <div className="col-md-4 offset-md-8">
+                  <div className="col-md-8">
+                    {state.editId > 0 && !state.canEdit && (
+                      <div className="alert alert-warning" role="alert">
+                        <i className="icon-alert-triangle"></i> <strong>Warning:</strong> Total Amount and Net Amount do not match! You have created receipt against it so can not edit.
+                      </div>
+                    )}
+                  </div>
+                  <div className="col-md-4">
                     <table className="table table-bordered">
                       <tbody>
                         <tr>
@@ -1476,7 +1464,8 @@ const plotNames = state.plotData
                           color="info" 
                           className="me-2" 
                           onClick={handleEdit}
-                          disabled={state.isSaving || state.isAdding || state.editMode}
+                          disabled={state.isSaving || state.isAdding || state.editMode || !state.canEdit}
+                          title={!state.canEdit ? "Total Amount and Net Amount do not match! You have created receipt against it so can not edit" : ""}
                         >
                           {state.editMode ? "Editing..." : "Edit"}
                         </Btn>
@@ -1525,5 +1514,4 @@ const plotNames = state.plotData
   );
 };
 
-export default PlotPurchase;
-
+export default TokenReceipt;

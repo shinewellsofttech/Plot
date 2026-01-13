@@ -10,6 +10,8 @@ import CardHeaderCommon from "../../CommonElements/CardHeaderCommon/CardHeaderCo
 import { Fn_FillListData, Fn_AddEditData, showToastWithCloseButton } from "../../store/Functions";
 import { API_WEB_URLS } from "../../constants/constAPI";
 import { toast } from "react-toastify";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 const API_URL_RECEIPTH = API_WEB_URLS.MASTER + "/0/token/ReceiptH";
 const API_URL_RECEIPTNO = API_WEB_URLS.MASTER + "/0/token/NextReceiptNo";
@@ -17,7 +19,7 @@ const API_URL_RECEIPTNO = API_WEB_URLS.MASTER + "/0/token/NextReceiptNo";
 
 const API_URL_SCHEME = API_WEB_URLS.MASTER + "/0/token/SchemeMaster";
 const API_URL_VOUCHER = API_WEB_URLS.MASTER + "/0/token/VoucherH";
-const API_URL_EMI = API_WEB_URLS.MASTER + "/0/token/EMIChart";
+const API_URL_EMI = API_WEB_URLS.MASTER + "/0/token/EMIChartById";
 const API_URL_SAVE = "ReceiptEntry/0/token";
 
 const ReceiptEntryForm = () => {
@@ -32,6 +34,8 @@ const ReceiptEntryForm = () => {
     isProgress: true,
     isEditMode: false,
     selectedReceiptId: null,
+    receiptSearchTerm: "",
+    receiptDropdownOpen: false,
     formData: {
       F_SchemeMaster: "",
       F_VoucherH: "",
@@ -51,7 +55,7 @@ const ReceiptEntryForm = () => {
   const navigate = useNavigate();
 
   const fetchData = async () => {
-    const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+    const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
     await Fn_FillListData(dispatch, setState, "SchemeArray", API_URL_SCHEME + "/TBL.F_CompanyMaster/" + obj.CompanyId  );
     const receiptNo = await Fn_FillListData(dispatch, setState, "ReceiptNo", API_URL_RECEIPTNO + "/Id/" + obj.CompanyId);
     console.log("receiptNo--------------->",receiptNo);
@@ -333,10 +337,12 @@ const ReceiptEntryForm = () => {
         ReceiptLData: "",
         formData: {
           ...prev.formData,
+          Penalty: 0,
           TotalPaidAmount: 0,
           Remark: autoRemark || "",
         },
       }));
+      setFieldValue("Penalty", 0);
       setFieldValue("TotalPaidAmount", 0);
       setFieldValue("Remark", autoRemark || "");
       return;
@@ -356,13 +362,20 @@ const ReceiptEntryForm = () => {
         return {
           F_EMIChart: emi.Id,
           PaidAmount: paidAmount,
+          EMIAmount: emi.EMIAmount || 0,
         };
       });
-
+      console.log("selectedEMIs==============>",selectedEMIs);
     const receiptLData = generateReceiptLData(selectedEMIs);
     // Sum of PaidAmount from selected EMIs
     const emiTotal = selectedEMIs.reduce((sum, item) => sum + parseFloat(item.PaidAmount || 0), 0);
-    const penalty = parseFloat(state.formData.Penalty) || 0;
+    // Calculate total penalty from selected EMIs' TotalPenaltyAmount
+    const selectedEMIObjects = state.EMIArray.filter((emi) => selectedIds.includes(String(emi.Id)));
+    const totalPenaltyFromEMIs = selectedEMIObjects.reduce((sum, emi) => {
+      const penaltyAmount = parseFloat(emi.TotalPenaltyAmount || 0);
+      return sum + (penaltyAmount > 0 ? penaltyAmount : 0);
+    }, 0);
+    const penalty = totalPenaltyFromEMIs;
     const totalAmount = emiTotal + penalty;
 
     // Auto-generate remark based on payment mode, total amount, and payment fields
@@ -381,11 +394,13 @@ const ReceiptEntryForm = () => {
       ReceiptLData: receiptLData,
       formData: {
         ...prev.formData,
+        Penalty: penalty,
         TotalPaidAmount: totalAmount,
         Remark: autoRemark || prev.formData.Remark,
       },
     }));
 
+    setFieldValue("Penalty", penalty);
     setFieldValue("TotalPaidAmount", totalAmount);
     if (autoRemark) {
       setFieldValue("Remark", autoRemark);
@@ -393,14 +408,21 @@ const ReceiptEntryForm = () => {
   };
 
   const generateReceiptLData = (emis) => {
-    return emis.map((emi) => `${emi.F_EMIChart}~${emi.PaidAmount}`).join("#");
+    return emis.map((emi) => `${emi.F_EMIChart}~${emi.EMIAmount}`).join("#");
   };
 
   const handleSubmit = async (values, setFieldValue) => {
-    const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
-    
+    const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+    const voucherData = state.VoucherArray.find(opt => opt.Id === parseInt(state.formData.F_VoucherH));
+    const partyName = voucherData?.LedgerName || '';
+    const MobileNo = voucherData?.MobileNo || voucherData?.PhoneNo || '';
+   const paymentMode = paymentModeOptions.find(opt => opt.Id === parseInt(state.formData.PaymentMode));
     const formData = new FormData();
     console.log(state.ReceiptLData);
+
+    formData.append("Party", partyName || "");
+    formData.append("MobileNo", MobileNo || "");
+    formData.append("PaymentModeName", paymentMode?.Name || "");
     formData.append("F_SchemeMaster", state.formData.F_SchemeMaster);
     formData.append("F_CompanyMaster", obj.CompanyId || "");
     formData.append("F_VoucherH", state.formData.F_VoucherH);
@@ -410,9 +432,15 @@ const ReceiptEntryForm = () => {
     formData.append("TotalPaidAmount", state.formData.TotalPaidAmount);
     formData.append("Penalty", state.formData.Penalty || 0);
     formData.append("Remark", state.formData.Remark);
-    formData.append("PaymentRefNo", state.formData.PaymentRefNo || "");
-    formData.append("PaymentBankName", state.formData.PaymentBankName || "");
-    formData.append("PaymentDate", state.formData.PaymentDate || "");
+    if (state.formData.PaymentRefNo && state.formData.PaymentRefNo.trim()) {
+      formData.append("PaymentRefNo", state.formData.PaymentRefNo);
+    }
+    if (state.formData.PaymentBankName && state.formData.PaymentBankName.trim()) {
+      formData.append("PaymentBankName", state.formData.PaymentBankName);
+    }
+    if (state.formData.PaymentDate && state.formData.PaymentDate.trim()) {
+      formData.append("PaymentDate", state.formData.PaymentDate);
+    }
     formData.append("ReceiptLData", state.ReceiptLData);
     formData.append("UserId", obj.Id || obj.id || "");
     
@@ -462,10 +490,59 @@ const ReceiptEntryForm = () => {
     }
   };
 
-  const handlePrint = async () => {
+  // Helper function to convert number to words
+  const numberToWords = (num) => {
+    const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
+    const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+    
+    if (num === 0) return 'ZERO';
+    if (num < 20) return ones[num];
+    if (num < 100) {
+      const ten = Math.floor(num / 10);
+      const one = num % 10;
+      return tens[ten] + (one > 0 ? ' ' + ones[one] : '');
+    }
+    if (num < 1000) {
+      const hundred = Math.floor(num / 100);
+      const remainder = num % 100;
+      return ones[hundred] + ' HUNDRED' + (remainder > 0 ? ' ' + numberToWords(remainder) : '');
+    }
+    if (num < 100000) {
+      const thousand = Math.floor(num / 1000);
+      const remainder = num % 1000;
+      return numberToWords(thousand) + ' THOUSAND' + (remainder > 0 ? ' ' + numberToWords(remainder) : '');
+    }
+    if (num < 10000000) {
+      const lakh = Math.floor(num / 100000);
+      const remainder = num % 100000;
+      return numberToWords(lakh) + ' LAKH' + (remainder > 0 ? ' ' + numberToWords(remainder) : '');
+    }
+    return '';
+  };
+
+  // Helper function to format date as DD-MMM-YYYY
+  const formatDateShort = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      // Extract date part (YYYY-MM-DD) to avoid timezone issues
+      const datePart = dateStr.split('T')[0];
+      const [year, month, day] = datePart.split('-');
+      // Create date in local timezone
+      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      const dayStr = String(date.getDate()).padStart(2, '0');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthStr = months[date.getMonth()];
+      const yearStr = date.getFullYear();
+      return `${dayStr}-${monthStr}-${yearStr}`;
+    } catch {
+      return '';
+    }
+  };
+
+  // Helper function to get print content HTML
+  const getReceiptPrintContent = async () => {
     if (!state.selectedReceiptId) {
-      showToastWithCloseButton("warning", "Please select a receipt to print");
-      return;
+      return null;
     }
     
     // Ensure EMI data is loaded if not already
@@ -476,7 +553,886 @@ const ReceiptEntryForm = () => {
       await new Promise(resolve => setTimeout(resolve, 300));
     }
     
-    window.print();
+    // Get print data first
+    const printData = getReceiptPrintData();
+    if (!printData) {
+      return null;
+    }
+    
+    const { receipt, emiDetails, company } = printData;
+    const paymentModeName = getPaymentModeName(receipt.PaymentMode);
+    
+    // Get PlotNames from VoucherArray
+    const voucherData = state.VoucherArray.find(v => v.Id === parseInt(selectedReceipt.F_VoucherH));
+    const plotNames = voucherData?.PlotNames || voucherData?.PlotName || '';
+    
+    // Generate HTML content for receipt with tables
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt #${receipt.ReceiptNo}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: Arial, sans-serif;
+            padding: 8px;
+            background: #fff;
+            color: #000;
+            font-size: 13px;
+            line-height: 1.2;
+          }
+          .print-button-container {
+            text-align: center;
+            margin-bottom: 8px;
+          }
+          .print-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 4px;
+          }
+          .print-button:hover {
+            background: #0056b3;
+          }
+          @media print {
+            .print-button-container { display: none; }
+            body { padding: 5mm; background: white; }
+            @page { size: A4; margin: 5mm; }
+          }
+          .receipt-header {
+            text-align: center;
+            border-bottom: 1.5px solid #2c3e50;
+            padding-bottom: 4px;
+            margin-bottom: 6px;
+          }
+          .receipt-header h1 {
+            font-size: 26px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #2c3e50;
+            margin-bottom: 2px;
+            line-height: 1.1;
+          }
+          .company-details {
+            font-size: 11px;
+            line-height: 1.2;
+            margin-top: 2px;
+            color: #555;
+          }
+          .receipt-body {
+            margin: 6px 0;
+          }
+          .receipt-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 4px 0;
+            text-transform: uppercase;
+            line-height: 1.1;
+          }
+          .receipt-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 20px;
+            margin-bottom: 6px;
+          }
+          .receipt-info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 16px;
+            line-height: 1.2;
+          }
+          .receipt-info-label {
+            font-weight: bold;
+            color: #000;
+            margin-right: 5px;
+          }
+          .receipt-info-value {
+            color: #000;
+            text-align: right;
+          }
+          .emi-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 6px 0;
+            font-size: 16px;
+          }
+          .emi-table thead {
+            background: transparent;
+            color: #000;
+          }
+          .emi-table th {
+            padding: 3px 5px;
+            text-align: left;
+            font-weight: bold;
+            border: 1px solid #ddd;
+            background: transparent;
+            font-size: 16px;
+            line-height: 1.2;
+          }
+          .emi-table td {
+            padding: 2px 5px;
+            border: 1px solid #ddd;
+            background: transparent;
+            font-size: 16px;
+            line-height: 1.2;
+          }
+          .emi-table tbody tr:nth-child(even) {
+            background: transparent;
+          }
+          .total-section {
+            margin-top: 6px;
+            padding: 3px 0;
+            border-top: 1px solid #ddd;
+            padding-top: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .total-left {
+            flex: 1;
+            text-align: left;
+          }
+          .total-right {
+            flex: 1;
+            text-align: right;
+          }
+          .total-label {
+            font-size: 13px;
+            font-weight: bold;
+            display: inline-block;
+            margin-right: 6px;
+          }
+          .total-amount {
+            font-size: 15px;
+            font-weight: bold;
+            display: inline-block;
+          }
+          .remark-inline {
+            font-size: 12px;
+            color: #000;
+            line-height: 1.2;
+          }
+          .remark-label-inline {
+            font-weight: bold;
+            margin-right: 4px;
+          }
+          .payment-mode-badge {
+            font-weight: normal;
+            font-size: 11px;
+            text-transform: uppercase;
+                  }
+          .remark-section {
+            margin-top: 6px;
+            padding: 4px 6px;
+            background: #fff3cd;
+            border-left: 3px solid #ffc107;
+            border-radius: 2px;
+            font-size: 11px;
+            line-height: 1.2;
+          }
+          .remark-label {
+            font-weight: bold;
+            color: #856404;
+            margin-bottom: 2px;
+                }
+          .remark-text {
+            color: #856404;
+            line-height: 1.2;
+          }
+          .receipt-footer {
+            margin-top: 8px;
+            padding-top: 4px;
+            border-top: 1px dashed #bdc3c7;
+            text-align: center;
+            color: #555;
+            font-size: 10px;
+            line-height: 1.2;
+          }
+          .payment-date-info {
+            font-size: 11px;
+            color: #000;
+            font-weight: normal;
+      }
+        </style>
+      </head>
+      <body>
+        <div class="print-button-container">
+          <button class="print-button" onclick="window.print()">🖨️ Print Receipt</button>
+        </div>
+        <div class="receipt-header">
+          <h1>${company.CompanyName || "MADHUBAN COLONIZERS"}</h1>
+          ${company.CompanyBranchName ? `<h2 style="font-size: 12px; color: #34495e; margin: 2px 0; line-height: 1.1;">${company.CompanyBranchName}</h2>` : ''}
+          <div class="company-details">
+            ${company.CompanyAddress ? `<div>${company.CompanyAddress}</div>` : ''}
+            <div style="display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 2px;">
+              ${company.CompanyMobileNo ? `<span>📞 ${company.CompanyMobileNo}</span>` : ''}
+              ${company.CompanyContactNo ? `<span>📞 ${company.CompanyContactNo}</span>` : ''}
+            </div>
+            ${company.CompanyRegNo ? `<div style="margin-top: 2px; font-weight: bold;">Reg. No: ${company.CompanyRegNo}</div>` : ''}
+          </div>
+        </div>
+        
+        <div class="receipt-body">
+          <div class="receipt-title">PAYMENT RECEIPT</div>
+          
+          <div class="receipt-info-grid">
+            <div class="receipt-info-item">
+              <span class="receipt-info-label">Receipt No:</span>
+              <span class="receipt-info-value">#${receipt.ReceiptNo}</span>
+            </div>
+            <div class="receipt-info-item">
+              <span class="receipt-info-label">Date:</span>
+              <span class="receipt-info-value">${formatDate(receipt.ReceiptDate)}</span>
+            </div>
+            ${receipt.CustomerName ? `
+            <div class="receipt-info-item" style="grid-column: 1 / -1;">
+              <span class="receipt-info-label">Customer:</span>
+              <span class="receipt-info-value">${receipt.CustomerName}</span>
+            </div>
+            ` : ''}
+            ${receipt.SchemeName ? `
+            <div class="receipt-info-item" style="grid-column: 1 / -1;">
+              <span class="receipt-info-label">Scheme:</span>
+              <span class="receipt-info-value">${receipt.SchemeName}</span>
+            </div>
+            ` : ''}
+            ${plotNames ? `
+            <div class="receipt-info-item" style="grid-column: 1 / -1;">
+              <span class="receipt-info-label">Plot Names:</span>
+              <span class="receipt-info-value">${plotNames}</span>
+            </div>
+            ` : ''}
+            <div class="receipt-info-item">
+              <span class="receipt-info-label">Payment Mode:</span>
+              <span class="receipt-info-value">
+                <span class="payment-mode-badge">${paymentModeName}</span>
+              </span>
+            </div>
+            <div class="receipt-info-item">
+              <span class="receipt-info-label">Payment Date:</span>
+              <span class="receipt-info-value">${formatDate(receipt.ReceiptDate)}</span>
+            </div>
+          </div>
+          
+          ${emiDetails.length > 0 ? `
+          <div style="margin-top: 15px;">
+            <table class="emi-table">
+              <thead>
+                <tr>
+                  <th style="width: 5%;">Sr.</th>
+                  <th style="width: 12%;">Inst. No.</th>
+                  <th style="width: 18%;">Due Date</th>
+                  <th style="width: 18%;">EMI Amount</th>
+                  <th style="width: 18%;">Paid Amount</th>
+                  <th style="width: 18%;">Payment Date</th>
+                  <th style="width: 11%; text-align: center;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${emiDetails.map((emi, index) => `
+                  <tr>
+                    <td style="text-align: center;">${index + 1}</td>
+                    <td style="font-weight: bold; text-align: center;">#${emi.InstallmentNo || 'N/A'}</td>
+                    <td>${emi.DueDate ? formatDate(emi.DueDate) : 'N/A'}</td>
+                    <td>${formatCurrency(emi.EMIAmount)}</td>
+                    <td style="text-align: right; font-weight: bold; color: #27ae60;">${formatCurrency(emi.PaidAmount)}</td>
+                    <td style="text-align: center; font-size: 16px; color: #27ae60; font-weight: bold;">${formatDate(receipt.ReceiptDate)}</td>
+                    <td style="text-align: center; color: #27ae60; font-weight: bold;">✓ Paid</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          ` : ''}
+          
+          <div class="total-section">
+            <div class="total-left">
+              ${receipt.Remark ? `
+              <span class="remark-inline">
+                <span class="remark-label-inline">Remarks:</span>
+                <span class="remark-text">${receipt.Remark}</span>
+              </span>
+              ` : ''}
+            </div>
+            <div class="total-right">
+              <span class="total-label">Total Amount Received:</span>
+              <span class="total-amount">${formatCurrency(receipt.TotalPaidAmount)}</span>
+            </div>
+          </div>
+          
+          <div class="receipt-footer">
+            <div style="margin-bottom: 3px; font-weight: bold; font-size: 12px; color: #2c3e50; line-height: 1.2;">
+              ✓ Thank you for your payment!
+            </div>
+            <div style="margin-bottom: 2px; font-size: 10px; line-height: 1.2;">
+              This receipt is valid proof of payment. Please keep it safe.
+            </div>
+            <div style="font-size: 9px; color: #95a5a6; margin-top: 3px; padding-top: 3px; border-top: 1px solid #ecf0f1; line-height: 1.2;">
+              <strong>${company.CompanyName || "MADHUBAN COLONIZERS"}</strong>
+              ${company.CompanyBranchName ? ` - ${company.CompanyBranchName}` : ''}
+              <br />
+              Authorized Signatory | Generated: ${new Date().toLocaleString('en-IN', { 
+                day: '2-digit', 
+                month: 'short', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  // Helper function to get multi print content HTML (only selected EMIs)
+  const getMultiPrintContent = async () => {
+    if (!state.selectedReceiptId || !state.selectedEMIIds || state.selectedEMIIds.length === 0) {
+      return null;
+    }
+    
+    // Ensure EMI data is loaded if not already
+    const selectedReceipt = state.ReceiptHArray.find(r => r.ReceiptId === parseInt(state.selectedReceiptId));
+    if (selectedReceipt && selectedReceipt.F_VoucherH) {
+      if (state.EMIArray.length === 0) {
+        await Fn_FillListData(dispatch, setState, "EMIArray", API_URL_EMI + "/TBL.F_VoucherH/" + selectedReceipt.F_VoucherH);
+        // Wait a moment for state to update
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    // Get receipt and company data
+    if (!selectedReceipt) return null;
+    const company = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+    const paymentModeName = getPaymentModeName(selectedReceipt.PaymentMode);
+    
+    // Get PlotNames from VoucherArray
+    const voucherData = state.VoucherArray.find(v => v.Id === parseInt(selectedReceipt.F_VoucherH));
+    const plotNames = voucherData?.PlotNames || voucherData?.PlotName || '';
+    
+    // Convert selectedEMIIds to numbers for comparison
+    const selectedEMIIdsAsNumbers = state.selectedEMIIds.map(id => parseInt(id));
+    
+    // Build EMI details from selected EMIs in state.EMIArray - use PaidAmount and PaidDate directly from EMI objects
+    const filteredEMIDetails = [];
+    selectedEMIIdsAsNumbers.forEach(emiId => {
+      // Find EMI in EMIArray
+      const emi = state.EMIArray.find(e => {
+        const eId = typeof e.Id === 'string' ? parseInt(e.Id) : e.Id;
+        return eId === emiId;
+      });
+      
+      if (emi) {
+        // Use PaidAmount and PaidDate directly from EMI object
+        filteredEMIDetails.push({
+          ...emi,
+          PaidAmount: parseFloat(emi.PaidAmount || emi.EMIAmount || 0),
+          PaidDate: emi.PaidDate || emi.DueDate || null
+        });
+      }
+    });
+    
+    // Calculate total for selected EMIs
+    const selectedTotal = filteredEMIDetails.reduce((sum, emi) => sum + parseFloat(emi.PaidAmount || 0), 0);
+    
+    // Generate HTML content for receipt with tables (same structure as getReceiptPrintContent)
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt #${selectedReceipt.ReceiptNo} - Multi Print</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: Arial, sans-serif;
+            padding: 15px;
+            background: #fff;
+            color: #000;
+            font-size: 16px;
+          }
+          .print-button-container {
+            text-align: center;
+            margin-bottom: 10px;
+          }
+          .print-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 4px;
+          }
+          .print-button:hover {
+            background: #0056b3;
+          }
+          @media print {
+            .print-button-container { display: none; }
+            body { padding: 8mm; background: white; }
+            @page { size: A4; margin: 8mm; }
+          }
+          .receipt-header {
+            text-align: center;
+            border-bottom: 2px solid #2c3e50;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+          }
+          .receipt-header h1 {
+            font-size: 30px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #2c3e50;
+            margin-bottom: 5px;
+          }
+          .company-details {
+            font-size: 13px;
+            line-height: 1.6;
+            margin-top: 5px;
+            color: #555;
+          }
+          .receipt-body {
+            margin: 15px 0;
+          }
+          .receipt-title {
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 10px 0;
+            text-transform: uppercase;
+          }
+          .receipt-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 30px;
+            margin-bottom: 15px;
+          }
+          .receipt-info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 19px;
+          }
+          .receipt-info-label {
+            font-weight: bold;
+            color: #000;
+            margin-right: 8px;
+          }
+          .receipt-info-value {
+            color: #000;
+            text-align: right;
+          }
+          .emi-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 19px;
+          }
+          .emi-table thead {
+            background: transparent;
+            color: #000;
+          }
+          .emi-table th {
+            padding: 8px 10px;
+            text-align: left;
+            font-weight: bold;
+            border: 1px solid #ddd;
+            background: transparent;
+            font-size: 19px;
+          }
+          .emi-table td {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            background: transparent;
+            font-size: 19px;
+          }
+          .emi-table tbody tr:nth-child(even) {
+            background: transparent;
+          }
+          .total-section {
+            margin-top: 15px;
+            padding: 5px 0;
+            border-top: 1px solid #ddd;
+            padding-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .total-left {
+            flex: 1;
+            text-align: left;
+          }
+          .total-right {
+            flex: 1;
+            text-align: right;
+          }
+          .total-label {
+            font-size: 16px;
+            font-weight: bold;
+            display: inline-block;
+            margin-right: 10px;
+          }
+          .total-amount {
+            font-size: 18px;
+            font-weight: bold;
+            display: inline-block;
+          }
+          .remark-inline {
+            font-size: 15px;
+            color: #000;
+          }
+          .remark-label-inline {
+            font-weight: bold;
+            margin-right: 5px;
+          }
+          .payment-mode-badge {
+            font-weight: normal;
+            font-size: 13px;
+            text-transform: uppercase;
+          }
+          .receipt-footer {
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px dashed #bdc3c7;
+            text-align: center;
+            color: #555;
+            font-size: 12px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-button-container">
+          <button class="print-button" onclick="window.print()">🖨️ Print Receipt</button>
+        </div>
+        <div class="receipt-header">
+          <h1>${company.CompanyName || "MADHUBAN COLONIZERS"}</h1>
+          ${company.CompanyBranchName ? `<h2 style="font-size: 14px; color: #34495e; margin: 2px 0; line-height: 1.1;">${company.CompanyBranchName}</h2>` : ''}
+          <div class="company-details">
+            ${company.CompanyAddress ? `<div>${company.CompanyAddress}</div>` : ''}
+            <div style="display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 2px;">
+              ${company.CompanyMobileNo ? `<span>📞 ${company.CompanyMobileNo}</span>` : ''}
+              ${company.CompanyContactNo ? `<span>📞 ${company.CompanyContactNo}</span>` : ''}
+          </div>
+            ${company.CompanyRegNo ? `<div style="margin-top: 2px; font-weight: bold;">Reg. No: ${company.CompanyRegNo}</div>` : ''}
+        </div>
+        </div>
+        
+        <div class="receipt-body">
+          <div class="receipt-title">PAYMENT RECEIPT</div>
+          
+          <div class="receipt-info-grid">
+            <div class="receipt-info-item">
+              <span class="receipt-info-label">Receipt No:</span>
+              <span class="receipt-info-value">#${selectedReceipt.ReceiptNo}</span>
+              </div>
+            <div class="receipt-info-item">
+              <span class="receipt-info-label">Date:</span>
+              <span class="receipt-info-value">${formatDate(selectedReceipt.ReceiptDate)}</span>
+              </div>
+            ${selectedReceipt.CustomerName ? `
+            <div class="receipt-info-item" style="grid-column: 1 / -1;">
+              <span class="receipt-info-label">Customer:</span>
+              <span class="receipt-info-value">${selectedReceipt.CustomerName}</span>
+              </div>
+            ` : ''}
+            ${selectedReceipt.SchemeName ? `
+            <div class="receipt-info-item" style="grid-column: 1 / -1;">
+              <span class="receipt-info-label">Scheme:</span>
+              <span class="receipt-info-value">${selectedReceipt.SchemeName}</span>
+              </div>
+            ` : ''}
+            ${plotNames ? `
+            <div class="receipt-info-item" style="grid-column: 1 / -1;">
+              <span class="receipt-info-label">Plot Names:</span>
+              <span class="receipt-info-value">${plotNames}</span>
+              </div>
+            ` : ''}
+            <div class="receipt-info-item">
+              <span class="receipt-info-label">Payment Mode:</span>
+              <span class="receipt-info-value">
+                <span class="payment-mode-badge">${paymentModeName}</span>
+              </span>
+              </div>
+            <div class="receipt-info-item">
+              <span class="receipt-info-label">Payment Date:</span>
+              <span class="receipt-info-value">${formatDate(selectedReceipt.ReceiptDate)}</span>
+              </div>
+              </div>
+          
+          ${filteredEMIDetails.length > 0 ? `
+          <div style="margin-top: 15px;">
+            <table class="emi-table">
+              <thead>
+                <tr>
+                  <th style="width: 5%;">Sr.</th>
+                  <th style="width: 12%;">Inst. No.</th>
+                  <th style="width: 18%;">Due Date</th>
+                  <th style="width: 18%;">EMI Amount</th>
+                  <th style="width: 18%;">Paid Amount</th>
+                  <th style="width: 18%;">Payment Date</th>
+                  <th style="width: 11%; text-align: center;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredEMIDetails.map((emi, index) => `
+                  <tr>
+                    <td style="text-align: center;">${index + 1}</td>
+                    <td style="font-weight: bold; text-align: center;">#${emi.InstallmentNo || 'N/A'}</td>
+                    <td>${emi.DueDate ? formatDate(emi.DueDate) : 'N/A'}</td>
+                    <td>${formatCurrency(emi.EMIAmount)}</td>
+                    <td style="text-align: right; font-weight: bold; color: #27ae60;">${formatCurrency(emi.PaidAmount)}</td>
+                    <td style="text-align: center; font-size: 19px; color: #27ae60; font-weight: bold;">${emi.PaidDate ? formatDate(emi.PaidDate) : (selectedReceipt.ReceiptDate ? formatDate(selectedReceipt.ReceiptDate) : 'N/A')}</td>
+                    <td style="text-align: center; color: #27ae60; font-weight: bold;">✓ Paid</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+              </div>
+          ` : ''}
+          
+          <div class="total-section">
+            <div class="total-left">
+              ${selectedReceipt.Remark ? `
+              <span class="remark-inline">
+                <span class="remark-label-inline">Remarks:</span>
+                <span class="remark-text">${selectedReceipt.Remark}</span>
+              </span>
+              ` : ''}
+            </div>
+            <div class="total-right">
+              <span class="total-label">Total Amount Received:</span>
+              <span class="total-amount">${formatCurrency(selectedTotal)}</span>
+              </div>
+              </div>
+          
+          <div class="receipt-footer">
+            <div style="margin-bottom: 3px; font-weight: bold; font-size: 12px; color: #2c3e50; line-height: 1.2;">
+              ✓ Thank you for your payment!
+              </div>
+            <div style="margin-bottom: 2px; font-size: 10px; line-height: 1.2;">
+              This receipt is valid proof of payment. Please keep it safe.
+              </div>
+            <div style="font-size: 9px; color: #95a5a6; margin-top: 3px; padding-top: 3px; border-top: 1px solid #ecf0f1; line-height: 1.2;">
+              <strong>${company.CompanyName || "MADHUBAN COLONIZERS"}</strong>
+              ${company.CompanyBranchName ? ` - ${company.CompanyBranchName}` : ''}
+              <br />
+              Authorized Signatory | Generated: ${new Date().toLocaleString('en-IN', { 
+                day: '2-digit', 
+                month: 'short', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+              </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  const handlePrint = async () => {
+    if (!state.selectedReceiptId) {
+      showToastWithCloseButton("warning", "Please select a receipt to print");
+      return;
+    }
+    
+    const receiptHTML = await getReceiptPrintContent();
+    if (!receiptHTML) {
+      showToastWithCloseButton("error", "Unable to load receipt data for printing");
+      return;
+    }
+    
+    // Open new window and write HTML
+    const printWindow = window.open('', '_blank', 'width=600,height=400');
+    if (printWindow) {
+      printWindow.document.write(receiptHTML);
+      printWindow.document.close();
+    } else {
+      showToastWithCloseButton("error", "Please allow popups to print receipt");
+    }
+  };
+
+  const handleMultiPrint = async () => {
+    if (!state.selectedReceiptId) {
+      showToastWithCloseButton("warning", "Please select a receipt to print");
+      return;
+    }
+    
+    if (!state.selectedEMIIds || state.selectedEMIIds.length === 0) {
+      showToastWithCloseButton("warning", "Please select at least one EMI to print");
+      return;
+    }
+    
+    const receiptHTML = await getMultiPrintContent();
+    if (!receiptHTML) {
+      showToastWithCloseButton("error", "Unable to load receipt data for printing");
+      return;
+    }
+    
+    // Open new window and write HTML
+    const printWindow = window.open('', '_blank', 'width=600,height=400');
+    if (printWindow) {
+      printWindow.document.write(receiptHTML);
+      printWindow.document.close();
+    } else {
+      showToastWithCloseButton("error", "Please allow popups to print receipt");
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!state.selectedReceiptId) {
+      showToastWithCloseButton("warning", "Please select a receipt to download");
+      return;
+    }
+    
+    const receiptHTML = await getReceiptPrintContent();
+    if (!receiptHTML) {
+      showToastWithCloseButton("error", "Unable to load receipt data for PDF");
+      return;
+    }
+    
+    const printWindow = window.open('', '_blank', 'width=600,height=400');
+    if (printWindow) {
+      printWindow.document.write(receiptHTML);
+      printWindow.document.close();
+      // Wait for content to load
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Trigger print dialog with PDF option
+      printWindow.print();
+      showToastWithCloseButton("success", "PDF download initiated!");
+    } else {
+      showToastWithCloseButton("error", "Please allow popups to download PDF");
+    }
+  };
+
+  const handleWhatsAppShare = async () => {
+    if (!state.selectedReceiptId) {
+      showToastWithCloseButton("warning", "Please select a receipt to share");
+      return;
+    }
+    
+    try {
+      showToastWithCloseButton("info", "Generating PDF...");
+      
+      const receiptHTML = await getReceiptPrintContent();
+      if (!receiptHTML) {
+        showToastWithCloseButton("error", "Unable to load receipt data");
+        return;
+      }
+      
+      // Create a temporary container for PDF generation
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.width = '210mm'; // A5 width
+      tempDiv.innerHTML = receiptHTML;
+      document.body.appendChild(tempDiv);
+      
+      // Wait for images to load
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Generate PDF using html2canvas and jsPDF
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        width: tempDiv.scrollWidth,
+        height: tempDiv.scrollHeight
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a5');
+      const imgWidth = 148; // A5 width in mm
+      const pageHeight = 210; // A5 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+      
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      // Remove temporary div
+      document.body.removeChild(tempDiv);
+      
+      // Generate PDF blob
+      const pdfBlob = pdf.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      
+      // Get receipt data for message
+      const printData = getReceiptPrintData();
+      if (!printData) {
+        showToastWithCloseButton("error", "Unable to load receipt data");
+        return;
+      }
+      
+      const { receipt, emiDetails } = printData;
+      const paymentModeName = getPaymentModeName(receipt.PaymentMode);
+      const fileName = `Receipt_${receipt.ReceiptNo || 'Receipt'}_${new Date().getTime()}.pdf`;
+      
+      // Create message
+      
+      let message = `*Payment Receipt*\n\n`;
+      message += `*Receipt No:* #${receipt.ReceiptNo}\n`;
+      message += `*Date:* ${formatDate(receipt.ReceiptDate)}\n`;
+      if (receipt.CustomerName) message += `*Customer:* ${receipt.CustomerName}\n`;
+      if (receipt.SchemeName) message += `*Scheme:* ${receipt.SchemeName}\n`;
+      message += `*Payment Mode:* ${paymentModeName}\n`;
+      message += `*Total Amount:* ${formatCurrency(receipt.TotalPaidAmount)}\n`;
+      message += `\n📎 PDF file is being downloaded. Please attach it to this message.`;
+      
+      // Try Web Share API first (for mobile devices)
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([pdfBlob], fileName, { type: 'application/pdf' })] })) {
+        try {
+          await navigator.share({
+            title: `Receipt #${receipt.ReceiptNo}`,
+            text: message,
+            files: [new File([pdfBlob], fileName, { type: 'application/pdf' })]
+          });
+          showToastWithCloseButton("success", "Shared via WhatsApp!");
+          return;
+        } catch (err) {
+          console.log("Web Share API failed, falling back to download + WhatsApp");
+        }
+      }
+      
+      // Fallback: Download PDF and open WhatsApp
+      const link = document.createElement('a');
+      link.href = pdfUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up blob URL after a delay
+      setTimeout(() => URL.revokeObjectURL(pdfUrl), 100);
+      
+      // Open WhatsApp with message
+      setTimeout(() => {
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+        window.open(whatsappUrl, '_blank');
+        showToastWithCloseButton("success", "PDF downloaded! Opening WhatsApp... Please attach the downloaded PDF file.");
+      }, 500);
+      
+    } catch (error) {
+      console.error("Error sharing PDF on WhatsApp:", error);
+      showToastWithCloseButton("error", "Error generating PDF. Please try again.");
+    }
   };
 
   const handleDelete = async() => {
@@ -493,7 +1449,7 @@ const ReceiptEntryForm = () => {
       if(res && res.length > 0 && res[0].Id > 0){
         toast.success("Receipt deleted successfully");
         // Reload receipt list
-        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         await Fn_FillListData(dispatch, setState, "ReceiptHArray", API_URL_RECEIPTH + "/Id/" + obj.CompanyId);
         
         // Reset form after successful deletion
@@ -534,7 +1490,12 @@ const ReceiptEntryForm = () => {
   const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
     try {
-      return new Date(dateStr).toLocaleDateString('en-IN', { 
+      // Extract date part (YYYY-MM-DD) to avoid timezone issues
+      const datePart = dateStr.split('T')[0];
+      const [year, month, day] = datePart.split('-');
+      // Create date in local timezone
+      const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      return localDate.toLocaleDateString('en-IN', { 
         day: '2-digit', 
         month: 'long', 
         year: 'numeric' 
@@ -567,17 +1528,19 @@ const ReceiptEntryForm = () => {
         if (emiId) {
           const emi = state.EMIArray.find(e => e.Id === parseInt(emiId));
           if (emi) {
+            // Use PaidAmount from EMI object if available, otherwise use amount from ReceiptLData (which is now EMIAmount)
             emiDetails.push({
               ...emi,
-              PaidAmount: parseFloat(amount) || 0
+              PaidAmount: parseFloat(emi.PaidAmount) || parseFloat(amount) || 0
             });
           } else {
             // If EMI not found in array, still show it with basic info
+            // Amount in ReceiptLData is now EMIAmount, but we'll use it as PaidAmount for display
             emiDetails.push({
               Id: parseInt(emiId),
               InstallmentNo: `EMI-${emiId}`,
               DueDate: null,
-              EMIAmount: 0,
+              EMIAmount: parseFloat(amount) || 0,
               PaidAmount: parseFloat(amount) || 0
             });
           }
@@ -588,7 +1551,7 @@ const ReceiptEntryForm = () => {
     return {
       receipt: selectedReceipt,
       emiDetails: emiDetails,
-      company: JSON.parse(localStorage.getItem("authUser") || "{}")
+      company: JSON.parse(sessionStorage.getItem("authUser") || "{}")
     };
   };
 
@@ -608,9 +1571,11 @@ const ReceiptEntryForm = () => {
       const emiPairs = receiptLData.split('#');
       selectedEMIs = emiPairs.map(pair => {
         const [emiId, amount] = pair.split('~');
+        const emiAmount = parseFloat(amount) || 0;
         return {
           F_EMIChart: parseInt(emiId),
-          PaidAmount: parseFloat(amount) || 0,
+          PaidAmount: emiAmount, // Will be updated from EMI object after EMIArray loads
+          EMIAmount: emiAmount, // This is what we save in ReceiptLData now
         };
       });
       selectedEMIIds = selectedEMIs.map(emi => String(emi.F_EMIChart));
@@ -668,13 +1633,27 @@ const ReceiptEntryForm = () => {
       if (selectedReceipt.F_VoucherH) {
         await Fn_FillListData(dispatch, setState, "EMIArray", API_URL_EMI + "/TBL.F_VoucherH/" + selectedReceipt.F_VoucherH);
         
-        // Wait a bit for EMIArray to be populated in state, then update selectedEMIIds
+        // Wait a bit for EMIArray to be populated in state, then update selectedEMIIds and PaidAmount
         setTimeout(() => {
-          setState((prev) => ({
-            ...prev,
-            selectedEMIIds: selectedEMIIds,
-            selectedEMIs: selectedEMIs,
-          }));
+          setState((prev) => {
+            // Update PaidAmount from EMI objects if available
+            const updatedSelectedEMIs = selectedEMIs.map(selectedEmi => {
+              const emiObject = prev.EMIArray.find(emi => emi.Id === selectedEmi.F_EMIChart);
+              if (emiObject && emiObject.PaidAmount) {
+                return {
+                  ...selectedEmi,
+                  PaidAmount: parseFloat(emiObject.PaidAmount) || selectedEmi.PaidAmount,
+                };
+              }
+              return selectedEmi;
+            });
+            
+            return {
+              ...prev,
+              selectedEMIIds: selectedEMIIds,
+              selectedEMIs: updatedSelectedEMIs,
+            };
+          });
         }, 500);
       }
     }
@@ -687,6 +1666,7 @@ const ReceiptEntryForm = () => {
         ...prev,
         isEditMode: false,
         selectedReceiptId: null,
+        receiptSearchTerm: "",
         formData: {
           F_SchemeMaster: "",
           F_VoucherH: "",
@@ -726,6 +1706,25 @@ const ReceiptEntryForm = () => {
 
     console.log("selectedReceipt--------------->",selectedReceipt);
     if (!selectedReceipt) return;
+
+    // Update search term with selected receipt display text
+    const datePart = selectedReceipt.ReceiptDate ? selectedReceipt.ReceiptDate.split('T')[0] : '';
+    const formattedDate = datePart ? (() => {
+      try {
+        const [year, month, day] = datePart.split('-');
+        const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        return localDate.toLocaleDateString('en-IN');
+      } catch {
+        return 'N/A';
+      }
+    })() : 'N/A';
+    const displayText = `Receipt #${selectedReceipt.ReceiptNo} - ${selectedReceipt.CustomerName || 'N/A'} - ${selectedReceipt.SchemeName || 'N/A'} - ₹${selectedReceipt.TotalPaidAmount?.toFixed(2) || '0.00'} - ${formattedDate}`;
+    
+    setState((prev) => ({
+      ...prev,
+      selectedReceiptId: parseInt(receiptId),
+      receiptSearchTerm: displayText
+    }));
 
     await populateReceiptForm(selectedReceipt, setFieldValue);
   };
@@ -838,7 +1837,7 @@ const ReceiptEntryForm = () => {
             background: white !important;
             font-family: 'Arial', 'Helvetica', sans-serif !important;
             color: #000 !important;
-            font-size: 11px !important;
+            font-size: 13px !important;
           }
           
           .receipt-header {
@@ -849,7 +1848,7 @@ const ReceiptEntryForm = () => {
           }
           
           .receipt-header h1 {
-            font-size: 18px !important;
+            font-size: 28px !important;
             font-weight: bold !important;
             color: #2c3e50 !important;
             margin: 4px 0 !important;
@@ -858,14 +1857,14 @@ const ReceiptEntryForm = () => {
           }
           
           .receipt-header h2 {
-            font-size: 14px !important;
+            font-size: 16px !important;
             color: #34495e !important;
             margin: 2px 0 !important;
             font-weight: 600 !important;
           }
           
           .company-details {
-            font-size: 9px !important;
+            font-size: 11px !important;
             color: #555 !important;
             line-height: 1.4 !important;
             margin-top: 4px !important;
@@ -878,36 +1877,36 @@ const ReceiptEntryForm = () => {
           .receipt-info-grid {
             display: grid !important;
             grid-template-columns: 1fr 1fr !important;
-            gap: 6px !important;
+            gap: 10px !important;
             margin-bottom: 8px !important;
           }
           
           .receipt-info-item {
             display: flex !important;
             justify-content: space-between !important;
-            padding: 4px 6px !important;
+            padding: 6px 6px !important;
             background: #f8f9fa !important;
             border-left: 2px solid #3498db !important;
-            font-size: 10px !important;
+            font-size: 16px !important;
           }
           
           .receipt-info-label {
             font-weight: bold !important;
             color: #2c3e50 !important;
-            font-size: 9px !important;
+            font-size: 11px !important;
           }
           
           .receipt-info-value {
             color: #34495e !important;
             text-align: right !important;
-            font-size: 10px !important;
+            font-size: 12px !important;
           }
           
           .emi-table {
             width: 100% !important;
             border-collapse: collapse !important;
             margin: 8px 0 !important;
-            font-size: 9px !important;
+            font-size: 16px !important;
           }
           
           .emi-table thead {
@@ -919,14 +1918,14 @@ const ReceiptEntryForm = () => {
             padding: 4px 6px !important;
             text-align: left !important;
             font-weight: bold !important;
-            font-size: 9px !important;
+            font-size: 16px !important;
             border: 1px solid #34495e !important;
           }
           
           .emi-table td {
             padding: 4px 6px !important;
             border: 1px solid #ddd !important;
-            font-size: 9px !important;
+            font-size: 16px !important;
           }
           
           .emi-table tbody tr:nth-child(even) {
@@ -943,13 +1942,13 @@ const ReceiptEntryForm = () => {
           }
           
           .total-label {
-            font-size: 11px !important;
+            font-size: 13px !important;
             font-weight: bold !important;
             margin-bottom: 4px !important;
           }
           
           .total-amount {
-            font-size: 18px !important;
+            font-size: 20px !important;
             font-weight: bold !important;
             letter-spacing: 0.5px !important;
           }
@@ -960,7 +1959,7 @@ const ReceiptEntryForm = () => {
             border-top: 1px dashed #bdc3c7 !important;
             text-align: center !important;
             color: #555 !important;
-            font-size: 9px !important;
+            font-size: 11px !important;
           }
           
           .payment-mode-badge {
@@ -970,7 +1969,7 @@ const ReceiptEntryForm = () => {
             color: white !important;
             border-radius: 12px !important;
             font-weight: bold !important;
-            font-size: 9px !important;
+            font-size: 11px !important;
             text-transform: uppercase !important;
           }
           
@@ -980,24 +1979,24 @@ const ReceiptEntryForm = () => {
             background: #fff3cd !important;
             border-left: 3px solid #ffc107 !important;
             border-radius: 3px !important;
-            font-size: 9px !important;
+            font-size: 11px !important;
           }
           
           .remark-label {
             font-weight: bold !important;
             color: #856404 !important;
             margin-bottom: 4px !important;
-            font-size: 9px !important;
+            font-size: 11px !important;
           }
           
           .remark-text {
             color: #856404 !important;
-            font-size: 9px !important;
+            font-size: 11px !important;
           }
           
           .receipt-title {
             text-align: center !important;
-            font-size: 14px !important;
+            font-size: 16px !important;
             font-weight: bold !important;
             color: #2c3e50 !important;
             margin: 6px 0 !important;
@@ -1005,7 +2004,7 @@ const ReceiptEntryForm = () => {
           }
           
           .payment-date-info {
-            font-size: 8px !important;
+            font-size: 10px !important;
             color: #27ae60 !important;
             font-weight: bold !important;
           }
@@ -1040,21 +2039,152 @@ const ReceiptEntryForm = () => {
                             <Label>
                               Select Receipt to Edit
                             </Label>
-                            <Input
-                              type="select"
-                              name="selectedReceipt"
-                              value={state.selectedReceiptId || ""}
-                              onChange={(e) => handleReceiptSelect(e.target.value, setFieldValue)}
-                              className="btn-square"
-                              style={{ fontFamily: 'inherit' }}
-                            >
-                              <option value="">-- Select Receipt (Optional) --</option>
-                              {state.ReceiptHArray.map((item) => (
-                                <option key={item.ReceiptId} value={item.ReceiptId}>
-                                  Receipt #{item.ReceiptNo} - {item.CustomerName || 'N/A'} - {item.SchemeName || 'N/A'} - ₹{item.TotalPaidAmount?.toFixed(2) || '0.00'} - {item.ReceiptDate ? new Date(item.ReceiptDate).toLocaleDateString('en-IN') : 'N/A'}
-                                </option>
-                              ))}
-                            </Input>
+                            <div style={{ position: 'relative' }}>
+                              <Input
+                                type="text"
+                                name="selectedReceipt"
+                                placeholder="-- Select Receipt (Optional) --"
+                                value={state.receiptSearchTerm || (() => {
+                                  if (!state.selectedReceiptId) return "";
+                                  const selected = state.ReceiptHArray.find(r => r.ReceiptId == state.selectedReceiptId);
+                                  if (!selected) return "";
+                                  const datePart = selected.ReceiptDate ? selected.ReceiptDate.split('T')[0] : '';
+                                  const formattedDate = datePart ? (() => {
+                                    try {
+                                      const [year, month, day] = datePart.split('-');
+                                      const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                                      return localDate.toLocaleDateString('en-IN');
+                                    } catch {
+                                      return 'N/A';
+                                    }
+                                  })() : 'N/A';
+                                  return `Receipt #${selected.ReceiptNo} - ${selected.CustomerName || 'N/A'} - ${selected.SchemeName || 'N/A'} - ₹${selected.TotalPaidAmount?.toFixed(2) || '0.00'} - ${formattedDate}`;
+                                })()}
+                                onChange={(e) => {
+                                  const searchTerm = e.target.value;
+                                  setState(prev => ({
+                                    ...prev,
+                                    receiptSearchTerm: searchTerm,
+                                    receiptDropdownOpen: true,
+                                    selectedReceiptId: searchTerm === "" ? null : prev.selectedReceiptId
+                                  }));
+                                }}
+                                onFocus={(e) => {
+                                  // Select all text when focused
+                                  e.target.select();
+                                  setState(prev => ({
+                                    ...prev,
+                                    receiptDropdownOpen: true
+                                  }));
+                                }}
+                                onBlur={() => {
+                                  // Delay to allow click on dropdown items
+                                  setTimeout(() => {
+                                    setState(prev => ({
+                                      ...prev,
+                                      receiptDropdownOpen: false
+                                    }));
+                                  }, 200);
+                                }}
+                                className="btn-square"
+                                style={{ fontFamily: 'inherit' }}
+                              />
+                              {state.receiptDropdownOpen && (
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 0,
+                                    right: 0,
+                                    backgroundColor: 'white',
+                                    border: '1px solid #ced4da',
+                                    borderTop: 'none',
+                                    borderRadius: '0 0 4px 4px',
+                                    maxHeight: '300px',
+                                    overflowY: 'auto',
+                                    zIndex: 1000,
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      padding: '8px 12px',
+                                      cursor: 'pointer',
+                                      borderBottom: '1px solid #f0f0f0'
+                                    }}
+                                    onClick={() => {
+                                      handleReceiptSelect("", setFieldValue);
+                                      setState(prev => ({
+                                        ...prev,
+                                        receiptSearchTerm: "",
+                                        receiptDropdownOpen: false
+                                      }));
+                                    }}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                  >
+                                    -- Select Receipt (Optional) --
+                                  </div>
+                                  {state.ReceiptHArray
+                                    .filter((item) => {
+                                      if (!state.receiptSearchTerm) return true;
+                                      const searchLower = state.receiptSearchTerm.toLowerCase();
+                                      const datePart = item.ReceiptDate ? item.ReceiptDate.split('T')[0] : '';
+                                      const formattedDate = datePart ? (() => {
+                                        try {
+                                          const [year, month, day] = datePart.split('-');
+                                          const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                                          return localDate.toLocaleDateString('en-IN');
+                                        } catch {
+                                          return 'N/A';
+                                        }
+                                      })() : 'N/A';
+                                      const displayText = `Receipt #${item.ReceiptNo} - ${item.CustomerName || 'N/A'} - ${item.SchemeName || 'N/A'} - ₹${item.TotalPaidAmount?.toFixed(2) || '0.00'} - ${formattedDate}`;
+                                      return displayText.toLowerCase().includes(searchLower);
+                                    })
+                                    .map((item) => {
+                                      const datePart = item.ReceiptDate ? item.ReceiptDate.split('T')[0] : '';
+                                      const formattedDate = datePart ? (() => {
+                                        try {
+                                          const [year, month, day] = datePart.split('-');
+                                          const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                                          return localDate.toLocaleDateString('en-IN');
+                                        } catch {
+                                          return 'N/A';
+                                        }
+                                      })() : 'N/A';
+                                      const displayText = `Receipt #${item.ReceiptNo} - ${item.CustomerName || 'N/A'} - ${item.SchemeName || 'N/A'} - ₹${item.TotalPaidAmount?.toFixed(2) || '0.00'} - ${formattedDate}`;
+                                      return (
+                                        <div
+                                          key={item.ReceiptId}
+                                          style={{
+                                            padding: '8px 12px',
+                                            cursor: 'pointer',
+                                            borderBottom: '1px solid #f0f0f0',
+                                            backgroundColor: state.selectedReceiptId == item.ReceiptId ? '#e7f3ff' : 'white'
+                                          }}
+                                          onClick={() => {
+                                            handleReceiptSelect(item.ReceiptId.toString(), setFieldValue);
+                                            setState(prev => ({
+                                              ...prev,
+                                              receiptSearchTerm: displayText,
+                                              receiptDropdownOpen: false
+                                            }));
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.currentTarget.style.backgroundColor = '#f8f9fa';
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor = state.selectedReceiptId == item.ReceiptId ? '#e7f3ff' : 'white';
+                                          }}
+                                          onMouseDown={(e) => e.preventDefault()}
+                                        >
+                                          {displayText}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              )}
+                            </div>
                             {state.isEditMode && (
                               <small className="text-info">
                                 <i className="fa fa-edit me-1"></i>Edit Mode: You can now modify the receipt details
@@ -1130,7 +2260,12 @@ const ReceiptEntryForm = () => {
                                         const formatDate = (dateStr) => {
                                           if (!dateStr) return 'N/A';
                                           try {
-                                            return new Date(dateStr).toLocaleDateString('en-IN', { 
+                                            // Extract date part (YYYY-MM-DD) to avoid timezone issues
+                                            const datePart = dateStr.split('T')[0];
+                                            const [year, month, day] = datePart.split('-');
+                                            // Create date in local timezone
+                                            const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                                            return localDate.toLocaleDateString('en-IN', { 
                                               day: '2-digit', 
                                               month: 'short', 
                                               year: 'numeric' 
@@ -1181,7 +2316,12 @@ const ReceiptEntryForm = () => {
                                       const formatDate = (dateStr) => {
                                         if (!dateStr) return 'N/A';
                                         try {
-                                          return new Date(dateStr).toLocaleDateString('en-IN', { 
+                                          // Extract date part (YYYY-MM-DD) to avoid timezone issues
+                                          const datePart = dateStr.split('T')[0];
+                                          const [year, month, day] = datePart.split('-');
+                                          // Create date in local timezone
+                                          const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                                          return localDate.toLocaleDateString('en-IN', { 
                                             day: '2-digit', 
                                             month: 'short', 
                                             year: 'numeric' 
@@ -1194,7 +2334,9 @@ const ReceiptEntryForm = () => {
                                       const isPaid = item.Status === true;
                                       const statusText = isPaid ? 'Paid' : 'Pending';
                                       const statusIcon = isPaid ? '✓' : '';
-                                      const emiText = `${statusIcon} Installment #${item.InstallmentNo} | Amount: ₹${item.EMIAmount?.toFixed(2) || '0.00'} | Due Date: ${formatDate(item.DueDate)} | ${isPaid ? 'Paid' : `Pending: ₹${item.PendingAmount?.toFixed(2) || '0.00'}`} | Status: ${statusText}`;
+                                      const totalPenalty = parseFloat(item.TotalPenaltyAmount || 0);
+                                      const penaltyText = totalPenalty > 0 ? ` | Penalty: ₹${totalPenalty.toFixed(2)}` : '';
+                                      const emiText = `${statusIcon} Installment #${item.InstallmentNo} | Amount: ₹${item.EMIAmount?.toFixed(2) || '0.00'} | Due Date: ${formatDate(item.DueDate)} | ${isPaid ? 'Paid' : `Pending: ₹${item.PendingAmount?.toFixed(2) || '0.00'}`}${penaltyText} | Status: ${statusText}`;
                                       
                                       return (
                                         <option key={item.Id} value={item.Id}>
@@ -1371,8 +2513,8 @@ const ReceiptEntryForm = () => {
                               value={values.TotalPaidAmount}
                               onChange={(e) => handleCommonChange("TotalPaidAmount", e.target.value, handleChange, setFieldValue)}
                               onBlur={handleBlur}
+                              onKeyDown={handleKeyDown}
                               invalid={touched.TotalPaidAmount && !!errors.TotalPaidAmount}
-                              readOnly
                             />
                             <ErrorMessage name="TotalPaidAmount" component="div" className="text-danger small" />
                           </FormGroup>
@@ -1424,6 +2566,33 @@ const ReceiptEntryForm = () => {
                             <i className="fa fa-print me-1"></i>Print Receipt
                           </Btn>
                           <Btn
+                            color="warning"
+                            type="button"
+                            className="me-2"
+                            onClick={handleMultiPrint}
+                            disabled={!state.selectedEMIIds || state.selectedEMIIds.length === 0}
+                            title={!state.selectedEMIIds || state.selectedEMIIds.length === 0 ? "Please select EMIs from the dropdown above" : `Print ${state.selectedEMIIds.length} selected EMI(s)`}
+                          >
+                            <i className="fa fa-print me-1"></i>Multi Print ({state.selectedEMIIds?.length || 0})
+                          </Btn>
+                          <Btn
+                            color="success"
+                            type="button"
+                            className="me-2"
+                            onClick={handleDownloadPDF}
+                          >
+                            <i className="fa fa-download me-1"></i>PDF
+                          </Btn>
+                          <Btn
+                            color="success"
+                            type="button"
+                            className="me-2"
+                            onClick={handleWhatsAppShare}
+                            style={{ backgroundColor: '#25D366', borderColor: '#25D366' }}
+                          >
+                            <i className="fa fa-whatsapp me-1"></i>WhatsApp
+                          </Btn>
+                          <Btn
                             color="danger"
                             type="button"
                             className="me-2"
@@ -1445,8 +2614,8 @@ const ReceiptEntryForm = () => {
         </Row>
       </Container>
       
-      {/* Print Receipt Section */}
-      {(() => {
+      {/* Print Receipt Section - Hidden, only used for data reference */}
+      {false && (() => {
         const printData = getReceiptPrintData();
         if (!printData) return null;
         
@@ -1555,10 +2724,6 @@ const ReceiptEntryForm = () => {
                       ))}
                     </tbody>
                   </table>
-                  <div style={{ fontSize: '9px', marginTop: '4px', padding: '4px', background: '#f0f0f0', textAlign: 'right' }}>
-                    <strong>Total EMIs Paid: {emiDetails.length} | </strong>
-                    <strong>Total Amount: {formatCurrency(receipt.TotalPaidAmount)}</strong>
-                  </div>
                 </div>
               )}
               

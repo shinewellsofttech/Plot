@@ -74,7 +74,7 @@ function SchemeWiseReport() {
     };
 
     const handleGenerateReport = async () => {
-        const obj = JSON.parse(localStorage.getItem("authUser") || "{}");
+        const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
         
         setState((prev) => ({ ...prev, isProgress: true }));
 

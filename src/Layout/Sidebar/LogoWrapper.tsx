@@ -3,7 +3,6 @@ import { useAppDispatch, useAppSelector } from '../../ReduxToolkit/Hooks';
 import { Image, SVG, H6 } from '../../AbstractElements';
 import { setToggleSidebar } from '../../ReduxToolkit/Reducers/LayoutSlice';
 import { dynamicImage } from '../../Service';
-import { Crocs } from '../../utils/Constant';
 
 const LogoWrapper = () => {
     const dispatch = useAppDispatch();

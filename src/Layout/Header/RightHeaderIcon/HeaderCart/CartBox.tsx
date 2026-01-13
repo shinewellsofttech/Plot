@@ -29,10 +29,10 @@ const CartBox = () => {
         </H5>
       </LI>
       <LI>
-        <Link className="view-cart" to={"/crocs/ecommerce/cart"}>
+        <Link className="view-cart" to={"/ecommerce/cart"}>
           {"View Cart"}
         </Link>
-        <Link className="view-checkout f-right" to={"/crocs/ecommerce/checkout"}>
+        <Link className="view-checkout f-right" to={"/ecommerce/checkout"}>
           {Checkout}
         </Link>
       </LI>
