@@ -33,6 +33,7 @@ const ReceiptEntryForm = () => {
     ReceiptLData: "",
     isProgress: true,
     isEditMode: false,
+    isSaving: false,
     selectedReceiptId: null,
     receiptSearchTerm: "",
     receiptDropdownOpen: false,
@@ -76,11 +77,13 @@ const ReceiptEntryForm = () => {
   }, [dispatch]);
 
   const handleAddNew = async (setFieldValue) => {
-    // Reset form to initial state
+    // Reset form to completely initial state - reset everything
     setState((prev) => ({
       ...prev,
       isEditMode: false,
       selectedReceiptId: null,
+      receiptSearchTerm: "",
+      receiptDropdownOpen: false,
       formData: {
         F_SchemeMaster: "",
         F_VoucherH: "",
@@ -88,6 +91,7 @@ const ReceiptEntryForm = () => {
         ReceiptNo: "",
         ReceiptDate: new Date().toISOString().split('T')[0],
         TotalPaidAmount: 0,
+        Penalty: 0,
         Remark: "",
         PaymentRefNo: "",
         PaymentBankName: "",
@@ -100,7 +104,52 @@ const ReceiptEntryForm = () => {
       ReceiptLData: "",
     }));
 
-    // Reset Formik values
+    // Reset all Formik values
+    setFieldValue("F_SchemeMaster", "");
+    setFieldValue("F_VoucherH", "");
+    setFieldValue("PaymentMode", "");
+    setFieldValue("ReceiptNo", "");
+    setFieldValue("ReceiptDate", new Date().toISOString().split('T')[0]);
+    setFieldValue("TotalPaidAmount", 0);
+    setFieldValue("Penalty", 0);
+    setFieldValue("Remark", "");
+    setFieldValue("PaymentRefNo", "");
+    setFieldValue("PaymentBankName", "");
+    setFieldValue("PaymentDate", "");
+
+    // Call fetchData to reload data
+    await fetchData();
+  };
+
+  const handleCancel = async (setFieldValue) => {
+    // Reset form to completely initial state - reset everything
+    setState((prev) => ({
+      ...prev,
+      isEditMode: false,
+      selectedReceiptId: null,
+      receiptSearchTerm: "",
+      receiptDropdownOpen: false,
+      formData: {
+        F_SchemeMaster: "",
+        F_VoucherH: "",
+        PaymentMode: "",
+        ReceiptNo: "",
+        ReceiptDate: new Date().toISOString().split('T')[0],
+        TotalPaidAmount: 0,
+        Penalty: 0,
+        Remark: "",
+        PaymentRefNo: "",
+        PaymentBankName: "",
+        PaymentDate: "",
+      },
+      VoucherArray: [],
+      EMIArray: [],
+      selectedEMIs: [],
+      selectedEMIIds: [],
+      ReceiptLData: "",
+    }));
+
+    // Reset all Formik values
     setFieldValue("F_SchemeMaster", "");
     setFieldValue("F_VoucherH", "");
     setFieldValue("PaymentMode", "");
@@ -118,54 +167,121 @@ const ReceiptEntryForm = () => {
   };
 
   const handleSchemeChange = async (schemeId, setFieldValue) => {
-    // Update formData in state
+    // Reset entire form except scheme dropdown - keep the new scheme value
     setState((prev) => ({
       ...prev,
+      isEditMode: false,
+      selectedReceiptId: null,
       formData: {
-        ...prev.formData,
-        F_SchemeMaster: schemeId,
-        F_VoucherH: "", // Reset voucher when scheme changes
+        F_SchemeMaster: schemeId, // Keep the new scheme value
+        F_VoucherH: "",
+        PaymentMode: "",
+        ReceiptNo: "",
+        ReceiptDate: new Date().toISOString().split('T')[0],
+        TotalPaidAmount: 0,
+        Penalty: 0,
+        Remark: "",
+        PaymentRefNo: "",
+        PaymentBankName: "",
+        PaymentDate: "",
       },
-      VoucherArray: [], // Clear voucher array
-      EMIArray: [], // Clear EMI array
-      selectedEMIs: [], // Clear selected EMIs
-      selectedEMIIds: [], // Clear selected EMI IDs
-      ReceiptLData: "", // Clear receipt line data
+      VoucherArray: [],
+      EMIArray: [],
+      selectedEMIs: [],
+      selectedEMIIds: [],
+      ReceiptLData: "",
+      receiptSearchTerm: "", // Clear receipt search
     }));
 
-    // Update Formik value
+    // Update all Formik values
     setFieldValue("F_SchemeMaster", schemeId);
     setFieldValue("F_VoucherH", "");
+    setFieldValue("PaymentMode", "");
+    setFieldValue("ReceiptNo", "");
+    setFieldValue("ReceiptDate", new Date().toISOString().split('T')[0]);
     setFieldValue("TotalPaidAmount", 0);
+    setFieldValue("Penalty", 0);
+    setFieldValue("Remark", "");
+    setFieldValue("PaymentRefNo", "");
+    setFieldValue("PaymentBankName", "");
+    setFieldValue("PaymentDate", "");
 
     // Fetch vouchers based on selected scheme
     if (schemeId) {
-    const res = await Fn_FillListData(dispatch, setState, "VoucherArray", API_URL_VOUCHER + "/TBL.F_SchemeMaster/" + schemeId);
-    console.log(res);
+      const res = await Fn_FillListData(dispatch, setState, "VoucherArray", API_URL_VOUCHER + "/TBL.F_SchemeMaster/" + schemeId);
+      console.log(res);
+      
+      // Fetch new receipt number
+      const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+      const receiptNo = await Fn_FillListData(dispatch, setState, "ReceiptNo", API_URL_RECEIPTNO + "/Id/" + obj.CompanyId);
+      if(receiptNo && receiptNo.length > 0) {
+        setState((prev) => ({
+          ...prev,
+          formData: {
+            ...prev.formData,
+            ReceiptNo: receiptNo[0].NextReceiptNo,
+          },
+        }));
+        setFieldValue("ReceiptNo", receiptNo[0].NextReceiptNo);
+      }
     }
   };
 
   const handleVoucherChange = async (voucherId, setFieldValue) => {
-    // Update formData in state
+    // Reset form except scheme and voucher dropdowns - keep both values
     setState((prev) => ({
       ...prev,
+      isEditMode: false,
+      selectedReceiptId: null,
       formData: {
-        ...prev.formData,
-        F_VoucherH: voucherId,
+        F_SchemeMaster: prev.formData.F_SchemeMaster, // Keep scheme value
+        F_VoucherH: voucherId, // Keep the new voucher value
+        PaymentMode: "",
+        ReceiptNo: "",
+        ReceiptDate: new Date().toISOString().split('T')[0],
+        TotalPaidAmount: 0,
+        Penalty: 0,
+        Remark: "",
+        PaymentRefNo: "",
+        PaymentBankName: "",
+        PaymentDate: "",
       },
-      EMIArray: [], // Clear EMI array
-      selectedEMIs: [], // Clear selected EMIs
-      selectedEMIIds: [], // Clear selected EMI IDs
-      ReceiptLData: "", // Clear receipt line data
+      EMIArray: [],
+      selectedEMIs: [],
+      selectedEMIIds: [],
+      ReceiptLData: "",
+      receiptSearchTerm: "", // Clear receipt search
     }));
 
-    // Update Formik value
+    // Update all Formik values except scheme
     setFieldValue("F_VoucherH", voucherId);
+    setFieldValue("PaymentMode", "");
+    setFieldValue("ReceiptNo", "");
+    setFieldValue("ReceiptDate", new Date().toISOString().split('T')[0]);
     setFieldValue("TotalPaidAmount", 0);
+    setFieldValue("Penalty", 0);
+    setFieldValue("Remark", "");
+    setFieldValue("PaymentRefNo", "");
+    setFieldValue("PaymentBankName", "");
+    setFieldValue("PaymentDate", "");
 
     // Fetch EMIs based on selected voucher
     if (voucherId) {
       await Fn_FillListData(dispatch, setState, "EMIArray", API_URL_EMI + "/TBL.F_VoucherH/" + voucherId);
+      
+      // Fetch new receipt number
+      const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+      const receiptNo = await Fn_FillListData(dispatch, setState, "ReceiptNo", API_URL_RECEIPTNO + "/Id/" + obj.CompanyId);
+      if(receiptNo && receiptNo.length > 0) {
+        setState((prev) => ({
+          ...prev,
+          formData: {
+            ...prev.formData,
+            ReceiptNo: receiptNo[0].NextReceiptNo,
+          },
+        }));
+        setFieldValue("ReceiptNo", receiptNo[0].NextReceiptNo);
+      }
     }
   };
 
@@ -412,44 +528,47 @@ const ReceiptEntryForm = () => {
   };
 
   const handleSubmit = async (values, setFieldValue) => {
-    const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
-    const voucherData = state.VoucherArray.find(opt => opt.Id === parseInt(state.formData.F_VoucherH));
-    const partyName = voucherData?.LedgerName || '';
-    const MobileNo = voucherData?.MobileNo || voucherData?.PhoneNo || '';
-   const paymentMode = paymentModeOptions.find(opt => opt.Id === parseInt(state.formData.PaymentMode));
-    const formData = new FormData();
-    console.log(state.ReceiptLData);
-
-    formData.append("Party", partyName || "");
-    formData.append("MobileNo", MobileNo || "");
-    formData.append("PaymentModeName", paymentMode?.Name || "");
-    formData.append("F_SchemeMaster", state.formData.F_SchemeMaster);
-    formData.append("F_CompanyMaster", obj.CompanyId || "");
-    formData.append("F_VoucherH", state.formData.F_VoucherH);
-    formData.append("PaymentMode", state.formData.PaymentMode);
-    formData.append("ReceiptNo", state.formData.ReceiptNo);
-    formData.append("ReceiptDate", state.formData.ReceiptDate);
-    formData.append("TotalPaidAmount", state.formData.TotalPaidAmount);
-    formData.append("Penalty", state.formData.Penalty || 0);
-    formData.append("Remark", state.formData.Remark);
-    if (state.formData.PaymentRefNo && state.formData.PaymentRefNo.trim()) {
-      formData.append("PaymentRefNo", state.formData.PaymentRefNo);
-    }
-    if (state.formData.PaymentBankName && state.formData.PaymentBankName.trim()) {
-      formData.append("PaymentBankName", state.formData.PaymentBankName);
-    }
-    if (state.formData.PaymentDate && state.formData.PaymentDate.trim()) {
-      formData.append("PaymentDate", state.formData.PaymentDate);
-    }
-    formData.append("ReceiptLData", state.ReceiptLData);
-    formData.append("UserId", obj.Id || obj.id || "");
+    // Set loading state to true
+    setState((prev) => ({ ...prev, isSaving: true }));
     
-    const receiptId = state.isEditMode ? state.selectedReceiptId : 0;
-    if (receiptId) {
-      formData.append("ReceiptId", receiptId);
-    }
-  
     try {
+      const obj = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+      const voucherData = state.VoucherArray.find(opt => opt.Id === parseInt(state.formData.F_VoucherH));
+      const partyName = voucherData?.LedgerName || '';
+      const MobileNo = voucherData?.MobileNo || voucherData?.PhoneNo || '';
+      const paymentMode = paymentModeOptions.find(opt => opt.Id === parseInt(state.formData.PaymentMode));
+      const formData = new FormData();
+      console.log(state.ReceiptLData);
+
+      formData.append("Party", partyName || "");
+      formData.append("MobileNo", MobileNo || "");
+      formData.append("PaymentModeName", paymentMode?.Name || "");
+      formData.append("F_SchemeMaster", state.formData.F_SchemeMaster);
+      formData.append("F_CompanyMaster", obj.CompanyId || "");
+      formData.append("F_VoucherH", state.formData.F_VoucherH);
+      formData.append("PaymentMode", state.formData.PaymentMode);
+      formData.append("ReceiptNo", state.formData.ReceiptNo);
+      formData.append("ReceiptDate", state.formData.ReceiptDate);
+      formData.append("TotalPaidAmount", state.formData.TotalPaidAmount);
+      formData.append("Penalty", state.formData.Penalty || 0);
+      formData.append("Remark", state.formData.Remark);
+      if (state.formData.PaymentRefNo && state.formData.PaymentRefNo.trim()) {
+        formData.append("PaymentRefNo", state.formData.PaymentRefNo);
+      }
+      if (state.formData.PaymentBankName && state.formData.PaymentBankName.trim()) {
+        formData.append("PaymentBankName", state.formData.PaymentBankName);
+      }
+      if (state.formData.PaymentDate && state.formData.PaymentDate.trim()) {
+        formData.append("PaymentDate", state.formData.PaymentDate);
+      }
+      formData.append("ReceiptLData", state.ReceiptLData);
+      formData.append("UserId", obj.Id || obj.id || "");
+      
+      const receiptId = state.isEditMode ? state.selectedReceiptId : 0;
+      if (receiptId) {
+        formData.append("ReceiptId", receiptId);
+      }
+    
       // Create a no-op navigate function to prevent automatic navigation
       const noOpNavigate = () => {};
       
@@ -463,23 +582,22 @@ const ReceiptEntryForm = () => {
         noOpNavigate, // Don't navigate automatically
         null
       );
-  
+    
       console.log("Save result:", result);
       const savedReceiptId = result?.data?.data?.id;
       console.log(savedReceiptId);
       if (savedReceiptId && savedReceiptId > 0) {
         // Refresh ReceiptHArray
-    const res =    await Fn_FillListData(dispatch, setState, "ReceiptHArray", API_URL_RECEIPTH + "/Id/0");
-  
-  
-    if(res.length > 0) {
-    const selectedReceipt = res.find(r => r.ReceiptId == parseInt(savedReceiptId));
-    console.log("selectedReceipt--------------->",selectedReceipt);
-    if(selectedReceipt) {
-      await handleReceiptUpdate(savedReceiptId, setFieldValue, res);
-    }
-   }
-       
+        const res = await Fn_FillListData(dispatch, setState, "ReceiptHArray", API_URL_RECEIPTH + "/Id/0");
+    
+        if(res.length > 0) {
+          const selectedReceipt = res.find(r => r.ReceiptId == parseInt(savedReceiptId));
+          console.log("selectedReceipt--------------->",selectedReceipt);
+          if(selectedReceipt) {
+            await handleReceiptUpdate(savedReceiptId, setFieldValue, res);
+          }
+        }
+         
         showToastWithCloseButton("success", "Receipt saved successfully");
       } else {
         showToastWithCloseButton("error", "Receipt save failed - No ID returned");
@@ -487,6 +605,9 @@ const ReceiptEntryForm = () => {
     } catch (error) {
       console.error("Error saving receipt:", error);
       showToastWithCloseButton("error", "Error saving receipt");
+    } finally {
+      // Set loading state to false
+      setState((prev) => ({ ...prev, isSaving: false }));
     }
   };
 
@@ -1557,8 +1678,11 @@ const ReceiptEntryForm = () => {
 
   const populateReceiptForm = async (selectedReceipt, setFieldValue) => {
     // Parse ReceiptDate - convert to YYYY-MM-DD format
+    // Extract date directly from ISO string to avoid timezone issues
     const receiptDate = selectedReceipt.ReceiptDate 
-      ? new Date(selectedReceipt.ReceiptDate).toISOString().split('T')[0]
+      ? (selectedReceipt.ReceiptDate.includes('T') 
+          ? selectedReceipt.ReceiptDate.split('T')[0] 
+          : selectedReceipt.ReceiptDate)
       : new Date().toISOString().split('T')[0];
 
     // Parse ReceiptLData to get EMI IDs and amounts
@@ -1595,7 +1719,11 @@ const ReceiptEntryForm = () => {
       Remark: selectedReceipt.Remark || "",
       PaymentRefNo: selectedReceipt.PaymentRefNo || "",
       PaymentBankName: selectedReceipt.PaymentBankName || "",
-      PaymentDate: selectedReceipt.PaymentDate ? new Date(selectedReceipt.PaymentDate).toISOString().split('T')[0] : "",
+      PaymentDate: selectedReceipt.PaymentDate 
+        ? (selectedReceipt.PaymentDate.includes('T') 
+            ? selectedReceipt.PaymentDate.split('T')[0] 
+            : selectedReceipt.PaymentDate)
+        : "",
     };
 
     // Update state with receipt data - this will trigger Formik reinitialize
@@ -2088,6 +2216,7 @@ const ReceiptEntryForm = () => {
                                 }}
                                 className="btn-square"
                                 style={{ fontFamily: 'inherit' }}
+                                disabled={state.isSaving}
                               />
                               {state.receiptDropdownOpen && (
                                 <div
@@ -2541,7 +2670,8 @@ const ReceiptEntryForm = () => {
                         color="secondary"
                         type="button"
                         className="me-2"
-                        onClick={() => navigate("/receiptEntry")}
+                        onClick={() => handleCancel(setFieldValue)}
+                        disabled={state.isSaving}
                       >
                         Cancel
                       </Btn>
@@ -2551,6 +2681,7 @@ const ReceiptEntryForm = () => {
                           type="button"
                           className="me-2"
                           onClick={() => handleAddNew(setFieldValue)}
+                          disabled={state.isSaving}
                         >
                           <i className="fa fa-plus me-1"></i>Add New
                         </Btn>
@@ -2562,6 +2693,7 @@ const ReceiptEntryForm = () => {
                             type="button"
                             className="me-2"
                             onClick={handlePrint}
+                            disabled={state.isSaving}
                           >
                             <i className="fa fa-print me-1"></i>Print Receipt
                           </Btn>
@@ -2570,7 +2702,7 @@ const ReceiptEntryForm = () => {
                             type="button"
                             className="me-2"
                             onClick={handleMultiPrint}
-                            disabled={!state.selectedEMIIds || state.selectedEMIIds.length === 0}
+                            disabled={state.isSaving || !state.selectedEMIIds || state.selectedEMIIds.length === 0}
                             title={!state.selectedEMIIds || state.selectedEMIIds.length === 0 ? "Please select EMIs from the dropdown above" : `Print ${state.selectedEMIIds.length} selected EMI(s)`}
                           >
                             <i className="fa fa-print me-1"></i>Multi Print ({state.selectedEMIIds?.length || 0})
@@ -2580,6 +2712,7 @@ const ReceiptEntryForm = () => {
                             type="button"
                             className="me-2"
                             onClick={handleDownloadPDF}
+                            disabled={state.isSaving}
                           >
                             <i className="fa fa-download me-1"></i>PDF
                           </Btn>
@@ -2589,6 +2722,7 @@ const ReceiptEntryForm = () => {
                             className="me-2"
                             onClick={handleWhatsAppShare}
                             style={{ backgroundColor: '#25D366', borderColor: '#25D366' }}
+                            disabled={state.isSaving}
                           >
                             <i className="fa fa-whatsapp me-1"></i>WhatsApp
                           </Btn>
@@ -2597,14 +2731,22 @@ const ReceiptEntryForm = () => {
                             type="button"
                             className="me-2"
                             onClick={handleDelete}
+                            disabled={state.isSaving}
                           >
                             <i className="fa fa-trash me-1"></i>Delete
                           </Btn>
                         </>
                       )}
-                      <Btn color="primary" type="submit">
-                        {state.isEditMode ? "Update Receipt" : "Submit Receipt"}
-                      </Btn>
+                      {state.isEditMode && (
+                        <Btn color="primary" type="submit" disabled={state.isSaving}>
+                          {state.isSaving ? "Updating..." : "Update Receipt"}
+                        </Btn>
+                      )}
+                      {!state.isEditMode && (
+                        <Btn color="primary" type="submit" disabled={state.isSaving}>
+                          {state.isSaving ? "Saving..." : "Submit Receipt"}
+                        </Btn>
+                      )}
                     </CardFooter>
                   </Card>
                 </Form>
@@ -2763,6 +2905,29 @@ const ReceiptEntryForm = () => {
           </div>
         );
       })()}
+      
+      {/* Loading Overlay */}
+      {state.isSaving && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          flexDirection: 'column'
+        }}>
+          <div className="spinner-border text-light" role="status" style={{ width: '4rem', height: '4rem' }}>
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <h4 className="text-light mt-3">Saving Receipt...</h4>
+          <p className="text-light">Please wait, do not close or refresh this page</p>
+        </div>
+      )}
     </div>
   );
 };

@@ -223,8 +223,8 @@ const PlotPurchaseTable = ({ plotData, plotOptions, onRemove, onAdd, onDataChang
                     <Btn
                       color="danger"
                       size="sm"
-                      onClick={() => index > 0 && onRemove && onRemove(index)}
-                      disabled={index === 0 || isReadOnly}
+                      onClick={() => onRemove && onRemove(index)}
+                      disabled={plotData.length <= 1 || isReadOnly}
                     >
                       -
                     </Btn>

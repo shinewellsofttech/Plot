@@ -692,7 +692,7 @@ const TokenReceipt = () => {
             @media print {
               body { margin: 0; padding: 0; }
               .no-print { display: none !important; }
-              @page { size: A5; margin: 10mm 15mm; }
+              @page { size: A5; margin: 20mm 15mm 10mm 15mm; }
             }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {

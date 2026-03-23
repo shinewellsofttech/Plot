@@ -6,6 +6,9 @@ import Breadcrumbs from "../../CommonElements/Breadcrumbs/Breadcrumbs";
 import CardHeaderCommon from "../../CommonElements/CardHeaderCommon/CardHeaderCommon";
 import { Fn_GetReport } from '../../store/Functions';
 import { API_WEB_URLS } from '../../constants/constAPI';
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 function SchemeWiseReport() {
     const dispatch = useDispatch();
@@ -125,6 +128,14 @@ function SchemeWiseReport() {
         }).format(parseFloat(amount));
     };
 
+    // Format amount without currency symbol (used in exports)
+    const formatAmountForExport = (amount) => {
+        return new Intl.NumberFormat('en-IN', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(parseFloat(amount || 0));
+    };
+
     // Calculate totals
     const calculateTotals = () => {
         if (!gridData || gridData.length === 0) {
@@ -157,6 +168,128 @@ function SchemeWiseReport() {
     };
 
     const totals = calculateTotals();
+
+    const getExportRows = () => {
+        return gridData.map((row, index) => ({
+            srNo: index + 1,
+            schemeName: row.Name || '-',
+            totalPlots: Number(row.TotalPlots || 0),
+            plotsSold: Number(row.TotalPlotsSold || 0),
+            pendingPlots: Number(row.PendingPlots || 0),
+            totalSoldAmount: Number(row.TotalPlotsSoldAmount || 0),
+            totalReceived: Number(row.TotalReceivedAmount || 0),
+            amountPending: Number(row.AmountPending || 0),
+        }));
+    };
+
+    const handleExportExcel = () => {
+        if (!gridData || gridData.length === 0) return;
+
+        const exportRows = getExportRows();
+        const sheetData = [
+            ["Scheme Wise Report"],
+            [`From Date: ${state.formData.FromDate || "-"}    To Date: ${state.formData.ToDate || "-"}`],
+            [],
+            ["#", "Scheme Name", "Total Plots", "Plots Sold", "Pending Plots", "Total Sold Amount", "Total Received", "Amount Pending"],
+            ...exportRows.map((row) => [
+                row.srNo,
+                row.schemeName,
+                row.totalPlots,
+                row.plotsSold,
+                row.pendingPlots,
+                row.totalSoldAmount,
+                row.totalReceived,
+                row.amountPending,
+            ]),
+            [
+                "",
+                "Total",
+                totals.totalPlots,
+                totals.totalPlotsSold,
+                totals.totalPendingPlots,
+                totals.totalPlotsSoldAmount,
+                totals.totalReceivedAmount,
+                totals.totalAmountPending,
+            ],
+        ];
+
+        const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+
+        worksheet["!cols"] = [
+            { wch: 6 },
+            { wch: 28 },
+            { wch: 12 },
+            { wch: 12 },
+            { wch: 14 },
+            { wch: 20 },
+            { wch: 18 },
+            { wch: 18 },
+        ];
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Scheme Wise Report");
+
+        const safeFromDate = (state.formData.FromDate || "from").replaceAll("-", "");
+        const safeToDate = (state.formData.ToDate || "to").replaceAll("-", "");
+        XLSX.writeFile(workbook, `Scheme_Wise_Report_${safeFromDate}_${safeToDate}.xlsx`);
+    };
+
+    const handleExportPdf = () => {
+        if (!gridData || gridData.length === 0) return;
+
+        const exportRows = getExportRows();
+        const doc = new jsPDF("l", "mm", "a4");
+
+        doc.setFontSize(14);
+        doc.text("Scheme Wise Report", 14, 12);
+        doc.setFontSize(10);
+        doc.text(`From Date: ${state.formData.FromDate || "-"}   To Date: ${state.formData.ToDate || "-"}`, 14, 18);
+
+        const body = exportRows.map((row) => ([
+            row.srNo,
+            row.schemeName,
+            row.totalPlots,
+            row.plotsSold,
+            row.pendingPlots,
+            formatAmountForExport(row.totalSoldAmount),
+            formatAmountForExport(row.totalReceived),
+            formatAmountForExport(row.amountPending),
+        ]));
+
+        autoTable(doc, {
+            startY: 22,
+            head: [["#", "Scheme Name", "Total Plots", "Plots Sold", "Pending Plots", "Total Sold Amount", "Total Received", "Amount Pending"]],
+            body,
+            foot: [[
+                "",
+                "Total",
+                totals.totalPlots,
+                totals.totalPlotsSold,
+                totals.totalPendingPlots,
+                formatAmountForExport(totals.totalPlotsSoldAmount),
+                formatAmountForExport(totals.totalReceivedAmount),
+                formatAmountForExport(totals.totalAmountPending),
+            ]],
+            theme: "grid",
+            styles: { fontSize: 9, cellPadding: 2 },
+            headStyles: { fillColor: [33, 37, 41] },
+            footStyles: { fillColor: [233, 236, 239], textColor: [0, 0, 0], fontStyle: "bold" },
+            columnStyles: {
+                0: { halign: "center", cellWidth: 10 },
+                1: { cellWidth: 50 },
+                2: { halign: "center", cellWidth: 20 },
+                3: { halign: "center", cellWidth: 20 },
+                4: { halign: "center", cellWidth: 24 },
+                5: { halign: "right", cellWidth: 32 },
+                6: { halign: "right", cellWidth: 30 },
+                7: { halign: "right", cellWidth: 30 },
+            },
+        });
+
+        const safeFromDate = (state.formData.FromDate || "from").replaceAll("-", "");
+        const safeToDate = (state.formData.ToDate || "to").replaceAll("-", "");
+        doc.save(`Scheme_Wise_Report_${safeFromDate}_${safeToDate}.pdf`);
+    };
 
     return (
         <div className="page-body">
@@ -194,6 +327,12 @@ function SchemeWiseReport() {
                                     <Col md="12" className="d-flex justify-content-end">
                                         <Btn color="primary" className="me-2" onClick={handleGenerateReport} disabled={state.isProgress}>
                                             {state.isProgress ? "Loading..." : "Generate Report"}
+                                        </Btn>
+                                        <Btn color="success" className="me-2" onClick={handleExportExcel} disabled={!gridData || gridData.length === 0}>
+                                            Export Excel
+                                        </Btn>
+                                        <Btn color="danger" className="me-2" onClick={handleExportPdf} disabled={!gridData || gridData.length === 0}>
+                                            Export PDF
                                         </Btn>
                                         <Btn color="secondary" onClick={handleReset}>
                                             Reset

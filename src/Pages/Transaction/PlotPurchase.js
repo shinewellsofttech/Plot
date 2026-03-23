@@ -410,49 +410,8 @@ const PlotPurchase = () => {
   };
 
   const handleAdd = () => {
-    setState((prev) => ({
-      ...prev,
-      isAdding: true,
-      formData: {
-        PurchaseRef: "",
-        VoucherDate: new Date().toISOString().split("T")[0],
-        F_SchemeMaster: "",
-        F_LedgerMaster: "",
-        DownPayment: "",
-        NoOfInstallment: "",
-        EMIStartDate: "",
-        EMIEndDate: "",
-        EMIAmount: "",
-        Penalty: "0",
-        TotalQty: "0",
-        TotalAmt: "0.00",
-        NetAmt: "0.00",
-      },
-      plotData: [
-        {
-          F_PlotMaster: "",
-          PlotSize: "0",
-          TentativePrice: "0",
-          Qty: "0",
-          ActualPrice: "0",
-          isNew: true,
-        },
-      ],
-      editMode: false,
-      editId: 0,
-      voucherLOptions: [],
-    }));
-    
-    // Focus on Date field after reset
-    setTimeout(() => {
-      if (dateInputRef.current) {
-        dateInputRef.current.focus();
-      }
-    }, 100);
-    
-    setTimeout(() => {
-      setState((prev) => ({ ...prev, isAdding: false }));
-    }, 500);
+    // Reload the page
+    window.location.reload();
   };
 
   const handleEdit = () => {
@@ -696,8 +655,8 @@ const plotNames = state.plotData
     const companyEmail = obj.CompanyEmail || '';
     const companyRegNo = obj.CompanyRegNo || '';
 
-    // Calculate totals
-    const totalQty = state.formData.TotalQty || 0;
+    // Calculate totals from actual plotData rows
+    const totalQty = state.plotData.reduce((sum, item) => sum + (parseFloat(item.Qty) || 0), 0);
     const totalDueAmount = parseFloat(state.formData.TotalAmt) || 0;
     const netAmount = parseFloat(state.formData.NetAmt) || 0;
 
@@ -717,10 +676,17 @@ const plotNames = state.plotData
             body {
               font-family: Arial, sans-serif;
               font-size: 12px;
-              padding: 15px;
+              padding: 15px 25px;
               max-width: 100%;
               margin: 0 auto;
               background: #fff;
+            }
+            @media print {
+              body {
+                padding: 15px 25px;
+                margin-left: 15px;
+                margin-right: 15px;
+              }
             }
             .print-header {
               display: flex;
@@ -1112,56 +1078,8 @@ const plotNames = state.plotData
   };
 
   const handleCancel = () => {
-    // If in edit mode, just disable edit mode (go back to view mode)
-    if (state.editMode && state.editId > 0) {
-      // Reload the original data
-      handleFormChange("PurchaseRef", state.formData.PurchaseRef);
-      setState((prev) => ({
-        ...prev,
-        editMode: false,
-      }));
-      toast.info("Edit mode cancelled. View mode enabled.");
-    } else {
-      // If no purchase selected, reset the form completely
-      setState((prev) => ({
-        ...prev,
-        formData: {
-          PurchaseRef: "",
-          VoucherDate: new Date().toISOString().split("T")[0],
-          F_SchemeMaster: "",
-          F_LedgerMaster: "",
-          DownPayment: "",
-          NoOfInstallment: "",
-          EMIStartDate: "",
-          EMIEndDate: "",
-          EMIAmount: "",
-          Penalty: "0",
-          TotalQty: "0",
-          TotalAmt: "0.00",
-          NetAmt: "0.00",
-        },
-        plotData: [
-          {
-            F_PlotMaster: "",
-            PlotSize: "0",
-            TentativePrice: "0",
-            Qty: "0",
-            ActualPrice: "0",
-            isNew: true,
-          },
-        ],
-        editMode: false,
-        editId: 0,
-        voucherLOptions: [],
-      }));
-      
-      // Focus on Date field after reset
-      setTimeout(() => {
-        if (dateInputRef.current) {
-          dateInputRef.current.focus();
-        }
-      }, 100);
-    }
+    // Reload the page
+    window.location.reload();
   };
 
   const handleDelete = async() => {

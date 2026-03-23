@@ -1,7 +1,7 @@
 export const API_WEB_URLS = {
 
   BASE: "https://ApiPlotMadhuban.shinewellsofttech.co.in/api/V1/",
-  // BASE: "http://192.168.31.151:5000/api/V1/",
+  // BASE: "http://10.191.83.30:5000/api/V1/",
   // BASE: "https://localhost:44379/api/V1/",
   // BASE_CHAT: "https://apiDemotask.shinewellsofttech.co.in/",
 
@@ -11,8 +11,7 @@ export const API_WEB_URLS = {
   IMAGEURL: "https://apiDemotask.shinewellsofttech.co.in/MemberImages/",
   // IMAGEURL: "http://192.168.1.46:7037/MemberImages/",
   IMAGEURL_PDF:
-    "https://apikreditbeast.shinewellsofttech.co.in/MemberImages/PDF/",
-  //
+    "https://apikreditbeast.shinewellsofttech.co.in/MemberImages/PDF/",//
   MASTER: "Masters",
   STUDENTCOURSEMAPDETAILS: "Masters/0/token/StudentCourseMap/Id/",
   STUDENTCOURSEMAPDETAILS_OtherData:
